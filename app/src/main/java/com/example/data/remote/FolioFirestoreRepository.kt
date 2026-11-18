@@ -4,6 +4,7 @@ import android.content.Context
 import com.example.R
 import com.example.data.model.BookCatalog
 import com.example.data.model.BookDefinition
+import com.example.data.model.CircleComment
 import com.example.data.model.CircleMemberProgress
 import com.example.data.model.LibraryBook
 import com.example.data.model.ReaderThemeMode
@@ -583,4 +584,104 @@ class FolioFirestoreRepository(
             Result.failure(e)
         }
     }
+
+    fun observeCircleComments(circle: ReadingCircle): Flow<List<CircleComment>> {
+        val uid = auth.currentUser?.uid ?: return flowOf(emptyList())
+        if (circle.id.isBlank() || uid !in circle.memberUids) {
+            return flowOf(emptyList())
+        }
+        val colRef = db.collection("reading_circles")
+            .document(circle.id)
+            .collection("comments")
+
+        return colRef.snapshots()
+            .map { snapshot ->
+                snapshot.toObjects(
+                    CircleComment::class.java,
+                    DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
+                ).sortedBy { it.createdAt?.toDate()?.time ?: Long.MAX_VALUE }
+            }
+            .catch { error ->
+                val firestoreError = generateSequence(error) { it.cause }
+                    .filterIsInstance<FirebaseFirestoreException>()
+                    .firstOrNull()
+                if (firestoreError == null && error is CancellationException) throw error
+                val exceptionToLog = firestoreError ?: (error as? Exception)
+                if (exceptionToLog != null && auth.currentUser?.uid == uid) {
+                    handleFirestoreError(exceptionToLog, OperationType.LIST, colRef.path)
+                }
+                emit(emptyList())
+            }
+    }
+
+    suspend fun addCircleComment(
+        circleId: String,
+        bookId: String,
+        userId: String,
+        displayName: String,
+        chapterIndex: Int,
+        body: String,
+        parentCommentId: String = "",
+        parentAuthorName: String = ""
+    ): Result<Unit> {
+        val trimmed = body.trim().take(500)
+        if (trimmed.isEmpty()) {
+            return Result.failure(IllegalArgumentException("Comment cannot be empty."))
+        }
+        val commentId = "cmt_${UUID.randomUUID().toString().replace("-", "").take(12)}"
+        val path = "reading_circles/$circleId/comments/$commentId"
+        return try {
+            val uid = requireUserId()
+            check(uid == userId) { "Signed-in user mismatch" }
+            val docRef = db.collection("reading_circles")
+                .document(circleId)
+                .collection("comments")
+                .document(commentId)
+
+            val payload = mapOf(
+                "circleId" to circleId.take(64),
+                "bookId" to bookId.take(64),
+                "authorUid" to uid,
+                "authorName" to safeDisplayName(displayName),
+                "chapterIndex" to chapterIndex.coerceIn(0, 10000).toLong(),
+                "body" to trimmed,
+                "parentCommentId" to parentCommentId.take(128),
+                "parentAuthorName" to parentAuthorName.take(80),
+                "createdAt" to FieldValue.serverTimestamp(),
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            docRef.set(payload).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.CREATE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteCircleComment(
+        circleId: String,
+        commentId: String,
+        userId: String
+    ): Result<Unit> {
+        val path = "reading_circles/$circleId/comments/$commentId"
+        return try {
+            val uid = requireUserId()
+            check(uid == userId) { "Signed-in user mismatch" }
+            db.collection("reading_circles")
+                .document(circleId)
+                .collection("comments")
+                .document(commentId)
+                .delete()
+                .await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.DELETE, path)
+            Result.failure(e)
+        }
+    }
 }
+

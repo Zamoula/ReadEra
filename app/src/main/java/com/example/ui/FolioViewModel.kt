@@ -1,5 +1,6 @@
 package com.example.ui
 
+import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -12,12 +13,15 @@ import com.example.data.local.UploadedPdfEntity
 import com.example.data.model.BookCatalog
 import com.example.data.model.BookCategory
 import com.example.data.model.BookDefinition
+import com.example.data.model.CircleComment
 import com.example.data.model.CircleMemberProgress
 import com.example.data.model.LibraryBook
 import com.example.data.model.ReaderThemeMode
 import com.example.data.model.ReadingCircle
 import com.example.data.model.UserProfile
 import com.example.data.remote.FolioFirestoreRepository
+import com.example.util.BookCommentNotifier
+import com.example.util.CommentNotificationTracker
 import com.example.util.ImportedPdfMetadata
 import com.example.util.NetworkMonitor
 import com.google.firebase.firestore.FirebaseFirestoreException
@@ -69,7 +73,9 @@ data class BookWithProgress(
 data class CircleWithMembers(
     val circle: ReadingCircle,
     val book: BookDefinition?,
-    val members: List<CircleMemberProgress>
+    val members: List<CircleMemberProgress>,
+    val comments: List<CircleComment> = emptyList(),
+    val unreadCommentCount: Int = 0
 )
 
 data class DashboardUiData(
@@ -79,10 +85,12 @@ data class DashboardUiData(
     val weeklyActivity: List<DailyActivityPoint>,
     val todayMinutes: Int,
     val preferences: ReaderPreferences,
-    val isOnline: Boolean
+    val isOnline: Boolean,
+    val totalUnreadComments: Int = 0
 )
 
 class FolioViewModel(
+    private val appContext: Context,
     private val firestoreRepository: FolioFirestoreRepository,
     private val offlineRepository: OfflineBookRepository,
     private val preferencesRepository: PreferencesRepository,
@@ -90,6 +98,9 @@ class FolioViewModel(
     private val currentUserId: String,
     private val displayName: String
 ) : ViewModel() {
+
+    private val commentTracker = CommentNotificationTracker(appContext, currentUserId)
+    private val _seenRevision = MutableStateFlow(0L)
 
     private val _statusBanner = MutableStateFlow<String?>(null)
     val statusBanner: StateFlow<String?> = _statusBanner.asStateFlow()
@@ -124,21 +135,38 @@ class FolioViewModel(
         }
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val circlesWithMembersFlow = firestoreRepository.observeMyCircles(currentUserId)
+    private val circlesWithMembersFlow = combine(
+        firestoreRepository.observeMyCircles(currentUserId),
+        _seenRevision
+    ) { circles, _ -> circles }
         .flatMapLatest { circles ->
             if (circles.isEmpty()) {
                 flowOf(emptyList())
             } else {
                 val perCircleFlows = circles.map { circle ->
-                    firestoreRepository.observeCircleMembers(circle).map { members ->
+                    combine(
+                        firestoreRepository.observeCircleMembers(circle),
+                        firestoreRepository.observeCircleComments(circle),
+                        _seenRevision
+                    ) { members, comments, _ ->
+                        notifyOnUnseenFriendComments(circle, comments)
+                        val lastSeen = commentTracker.getLastSeenMillis(circle.id)
+                        val unread = comments.count { comment ->
+                            val createdMs = comment.createdAt?.toDate()?.time ?: 0L
+                            comment.authorUid != currentUserId && createdMs > lastSeen
+                        }
                         CircleWithMembers(
                             circle = circle,
                             book = BookCatalog.findById(circle.bookId),
-                            members = members
+                            members = members,
+                            comments = comments,
+                            unreadCommentCount = unread
                         )
                     }
                 }
-                combine(perCircleFlows) { it.toList().sortedByDescending { c -> c.circle.updatedAt?.seconds ?: 0L } }
+                combine(perCircleFlows) {
+                    it.toList().sortedByDescending { c -> c.circle.updatedAt?.seconds ?: 0L }
+                }
             }
         }
         .map<List<CircleWithMembers>, UiState<List<CircleWithMembers>>> { UiState.Success(it) }
@@ -244,7 +272,8 @@ class FolioViewModel(
                     weeklyActivity = weekly,
                     todayMinutes = todayMin,
                     preferences = prefs,
-                    isOnline = online
+                    isOnline = online,
+                    totalUnreadComments = circles.sumOf { it.unreadCommentCount }
                 )
             )
         }
@@ -551,6 +580,107 @@ class FolioViewModel(
                 .onSuccess { _statusBanner.value = "Left reading circle" }
                 .onFailure { _statusBanner.value = it.localizedMessage ?: "Failed to leave circle" }
         }
+    }
+
+    fun postBookComment(
+        book: BookDefinition,
+        chapterIndex: Int,
+        body: String,
+        parentComment: CircleComment? = null,
+        preferredCircleId: String? = null
+    ) {
+        val trimmed = body.trim()
+        if (trimmed.isEmpty()) return
+        viewModelScope.launch {
+            val existingCircleId = preferredCircleId
+                ?: (dashboardState.value as? UiState.Success)?.data?.circles
+                    ?.firstOrNull { it.circle.bookId == book.id }?.circle?.id
+
+            val resolvedCircleId = if (existingCircleId != null) {
+                existingCircleId
+            } else {
+                val created = firestoreRepository.createOrGetCircleForBook(
+                    userId = currentUserId,
+                    displayName = displayName,
+                    book = book,
+                    currentChapter = chapterIndex
+                )
+                created.getOrElse { err ->
+                    _statusBanner.value = err.localizedMessage ?: "Could not start discussion"
+                    return@launch
+                }.id
+            }
+
+            commentTracker.markSeen(resolvedCircleId, System.currentTimeMillis())
+            commentTracker.markNotified(resolvedCircleId, System.currentTimeMillis())
+            _seenRevision.update { it + 1L }
+
+            val result = firestoreRepository.addCircleComment(
+                circleId = resolvedCircleId,
+                bookId = book.id,
+                userId = currentUserId,
+                displayName = displayName,
+                chapterIndex = chapterIndex,
+                body = trimmed,
+                parentCommentId = parentComment?.id.orEmpty(),
+                parentAuthorName = parentComment?.authorName.orEmpty()
+            )
+            result.onFailure { err ->
+                _statusBanner.value = err.localizedMessage ?: "Could not post comment"
+            }
+        }
+    }
+
+    fun deleteBookComment(circleId: String, commentId: String) {
+        viewModelScope.launch {
+            firestoreRepository.deleteCircleComment(circleId, commentId, currentUserId)
+                .onFailure { err ->
+                    _statusBanner.value = err.localizedMessage ?: "Could not delete comment"
+                }
+        }
+    }
+
+    fun markCircleCommentsRead(circleId: String) {
+        val circles = (dashboardState.value as? UiState.Success)?.data?.circles.orEmpty()
+        val latest = circles.firstOrNull { it.circle.id == circleId }
+            ?.comments?.maxOfOrNull { it.createdAt?.toDate()?.time ?: 0L }
+            ?: 0L
+        commentTracker.markSeen(circleId, maxOf(latest, System.currentTimeMillis()))
+        _seenRevision.update { it + 1L }
+    }
+
+    private fun notifyOnUnseenFriendComments(
+        circle: ReadingCircle,
+        comments: List<CircleComment>
+    ) {
+        val lastNotified = commentTracker.getLastNotifiedMillis(circle.id)
+        val newFriendComments = comments.filter { comment ->
+            val createdMs = comment.createdAt?.toDate()?.time ?: 0L
+            comment.authorUid != currentUserId && createdMs > lastNotified
+        }
+        if (newFriendComments.isEmpty()) return
+
+        val latest = newFriendComments.last()
+        val latestMs = newFriendComments.maxOf { it.createdAt?.toDate()?.time ?: 0L }
+        if (latestMs <= 0L) return
+
+        commentTracker.markNotified(circle.id, latestMs)
+
+        val isReply = latest.parentCommentId.isNotBlank()
+        _statusBanner.value = if (isReply) {
+            "${latest.authorName} replied on \"${circle.bookTitle}\": ${latest.body.take(48)}"
+        } else {
+            "${latest.authorName} commented on \"${circle.bookTitle}\": ${latest.body.take(48)}"
+        }
+
+        BookCommentNotifier.notifyNewComment(
+            context = appContext,
+            circleId = circle.id,
+            bookTitle = circle.bookTitle,
+            authorName = latest.authorName,
+            commentBody = latest.body,
+            isReply = isReply
+        )
     }
 
     fun handleIncomingDeepLink(rawUri: String) {

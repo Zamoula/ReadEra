@@ -1,5 +1,7 @@
 package com.example.ui
 
+import android.Manifest
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +22,8 @@ import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.Group
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -75,6 +79,7 @@ import com.example.ui.dashboard.DashboardScreen
 import com.example.ui.library.LibraryScreen
 import com.example.ui.reader.ReaderScreen
 import com.example.ui.theme.FolioTheme
+import com.example.util.BookCommentNotifier
 import com.example.util.ImportedPdfMetadata
 import com.example.util.NetworkMonitor
 import com.example.util.PdfBookImporter
@@ -190,6 +195,7 @@ private fun AuthenticatedFolioShell(
                 val databaseId = app.getString(R.string.firestore_database_id)
                 val db = FirebaseFirestore.getInstance(databaseId)
                 FolioViewModel(
+                    appContext = app,
                     firestoreRepository = FolioFirestoreRepository(db),
                     offlineRepository = OfflineBookRepository(FolioDatabase.getInstance(app).offlineDao()),
                     preferencesRepository = preferencesRepository,
@@ -200,6 +206,18 @@ private fun AuthenticatedFolioShell(
             }
         }
     )
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ -> }
+
+    LaunchedEffect(currentUserId) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            !BookCommentNotifier.hasNotificationPermission(context)
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
 
     val uiState by viewModel.dashboardState.collectAsStateWithLifecycle()
     val statusBanner by viewModel.statusBanner.collectAsStateWithLifecycle()
@@ -376,6 +394,7 @@ private fun AuthenticatedFolioShell(
             }
 
             if (readerBookItem != null) {
+                val activeCircle = data.circles.firstOrNull { it.circle.bookId == readerBookItem.book.id }
                 Box(modifier = Modifier.fillMaxSize()) {
                     ReaderScreen(
                         bookItem = readerBookItem,
@@ -383,6 +402,8 @@ private fun AuthenticatedFolioShell(
                         preferences = data.preferences,
                         isOnline = data.isOnline,
                         offlineRepository = offlineRepository,
+                        currentUserId = currentUserId,
+                        circleWithMembers = activeCircle,
                         onSaveChapterProgress = { chapterIdx, minutesDelta, markCompleted ->
                             viewModel.saveChapterProgress(
                                 book = readerBookItem.book,
@@ -401,6 +422,21 @@ private fun AuthenticatedFolioShell(
                         onAdjustFontSize = { delta -> viewModel.adjustFontSize(delta) },
                         onSetLineSpacing = { lvl -> viewModel.setLineSpacing(lvl) },
                         onSetUseSerif = { serif -> viewModel.setUseSerifFont(serif) },
+                        onPostComment = { chapterIdx, body, parent ->
+                            viewModel.postBookComment(
+                                book = readerBookItem.book,
+                                chapterIndex = chapterIdx,
+                                body = body,
+                                parentComment = parent,
+                                preferredCircleId = activeCircle?.circle?.id
+                            )
+                        },
+                        onDeleteComment = { circleId, commentId ->
+                            viewModel.deleteBookComment(circleId, commentId)
+                        },
+                        onMarkCommentsRead = { circleId ->
+                            viewModel.markCircleCommentsRead(circleId)
+                        },
                         onBack = { activeReaderBookId = null }
                     )
                     SnackbarHost(
@@ -437,10 +473,18 @@ private fun AuthenticatedFolioShell(
                                             selected = selected,
                                             onClick = { navigateTab(dest.route) },
                                             icon = {
-                                                Icon(
-                                                    imageVector = if (selected) dest.selectedIcon else dest.unselectedIcon,
-                                                    contentDescription = stringResource(dest.labelRes)
-                                                )
+                                                BadgedBox(
+                                                    badge = {
+                                                        if (dest.route == ROUTE_CIRCLES && data.totalUnreadComments > 0) {
+                                                            Badge { Text("${data.totalUnreadComments}") }
+                                                        }
+                                                    }
+                                                ) {
+                                                    Icon(
+                                                        imageVector = if (selected) dest.selectedIcon else dest.unselectedIcon,
+                                                        contentDescription = stringResource(dest.labelRes)
+                                                    )
+                                                }
                                             },
                                             label = { Text(stringResource(dest.labelRes)) },
                                             modifier = Modifier.testTag(dest.testTag)
@@ -465,10 +509,18 @@ private fun AuthenticatedFolioShell(
                                             selected = selected,
                                             onClick = { navigateTab(dest.route) },
                                             icon = {
-                                                Icon(
-                                                    imageVector = if (selected) dest.selectedIcon else dest.unselectedIcon,
-                                                    contentDescription = stringResource(dest.labelRes)
-                                                )
+                                                BadgedBox(
+                                                    badge = {
+                                                        if (dest.route == ROUTE_CIRCLES && data.totalUnreadComments > 0) {
+                                                            Badge { Text("${data.totalUnreadComments}") }
+                                                        }
+                                                    }
+                                                ) {
+                                                    Icon(
+                                                        imageVector = if (selected) dest.selectedIcon else dest.unselectedIcon,
+                                                        contentDescription = stringResource(dest.labelRes)
+                                                    )
+                                                }
                                             },
                                             label = { Text(stringResource(dest.labelRes)) },
                                             modifier = Modifier.testTag(dest.testTag)
@@ -547,6 +599,15 @@ private fun AuthenticatedFolioShell(
                                         },
                                         onUpdateNote = { circle, note ->
                                             viewModel.updateCircleNote(circle, note)
+                                        },
+                                        onPostComment = { book, chapterIdx, body, parent, circleId ->
+                                            viewModel.postBookComment(book, chapterIdx, body, parent, circleId)
+                                        },
+                                        onDeleteComment = { circleId, commentId ->
+                                            viewModel.deleteBookComment(circleId, commentId)
+                                        },
+                                        onMarkCommentsRead = { circleId ->
+                                            viewModel.markCircleCommentsRead(circleId)
                                         },
                                         onLeaveCircle = { circleId ->
                                             viewModel.leaveCircle(circleId)

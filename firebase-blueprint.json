@@ -260,6 +260,67 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "CircleComment": {
+      "title": "CircleComment",
+      "description": "Threaded book comment or reply posted by a reader in a shared reading circle.",
+      "type": "object",
+      "properties": {
+        "circleId": {
+          "type": "string",
+          "description": "Parent reading circle ID."
+        },
+        "bookId": {
+          "type": "string",
+          "description": "Book identifier associated with the comment."
+        },
+        "authorUid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the commenter."
+        },
+        "authorName": {
+          "type": "string",
+          "description": "Display name of the commenter."
+        },
+        "chapterIndex": {
+          "type": "integer",
+          "description": "Zero-based chapter or page index where the comment was made."
+        },
+        "body": {
+          "type": "string",
+          "description": "Comment or reply text (1 to 500 characters)."
+        },
+        "parentCommentId": {
+          "type": "string",
+          "description": "Empty for top-level comments, or parent comment ID when replying to a comment."
+        },
+        "parentAuthorName": {
+          "type": "string",
+          "description": "Display name of the parent comment author for replies."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of comment creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update."
+        }
+      },
+      "required": [
+        "circleId",
+        "bookId",
+        "authorUid",
+        "authorName",
+        "chapterIndex",
+        "body",
+        "parentCommentId",
+        "parentAuthorName",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -278,6 +339,11 @@
     "/reading_circles/{circleId}/members/{memberUid}": {
       "schema": { "$ref": "#/entities/CircleMemberProgress" },
       "description": "Per-member live reading progress within a shared reading circle."
+    },
+    "/reading_circles/{circleId}/comments/{commentId}": {
+      "schema": { "$ref": "#/entities/CircleComment" },
+      "description": "Shared comments and replies for readers with the same book link."
     }
   }
 }
+

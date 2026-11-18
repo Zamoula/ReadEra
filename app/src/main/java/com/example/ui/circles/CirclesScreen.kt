@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.AddLink
+import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.ExitToApp
@@ -56,9 +57,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.model.BookCatalog
 import com.example.data.model.BookDefinition
+import com.example.data.model.CircleComment
 import com.example.data.model.ReadingCircle
 import com.example.ui.CircleWithMembers
 import com.example.ui.DashboardUiData
+import com.example.ui.components.BookCommentsBottomSheet
 import com.example.ui.components.BookCoverArt
 import com.example.util.BookLinkHelper
 
@@ -70,6 +73,9 @@ fun CirclesScreen(
     onShareBook: (BookDefinition) -> Unit,
     onJoinBookLink: (String) -> Unit,
     onUpdateNote: (ReadingCircle, String) -> Unit,
+    onPostComment: (BookDefinition, Int, String, CircleComment?, String?) -> Unit,
+    onDeleteComment: (circleId: String, commentId: String) -> Unit,
+    onMarkCommentsRead: (circleId: String) -> Unit,
     onLeaveCircle: (String) -> Unit,
     onCopiedMessage: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -77,6 +83,34 @@ fun CirclesScreen(
     val context = LocalContext.current
     var linkInput by remember { mutableStateOf("") }
     var editingCircle by remember { mutableStateOf<ReadingCircle?>(null) }
+    var activeCommentsCircleId by remember { mutableStateOf<String?>(null) }
+
+    val activeCommentsItem = remember(data.circles, activeCommentsCircleId) {
+        activeCommentsCircleId?.let { cid ->
+            data.circles.firstOrNull { it.circle.id == cid }
+        }
+    }
+
+    if (activeCommentsItem != null) {
+        val myCh = activeCommentsItem.members.firstOrNull { it.memberUid == currentUserId }
+            ?.currentChapter?.toInt() ?: 0
+        BookCommentsBottomSheet(
+            bookTitle = activeCommentsItem.circle.bookTitle,
+            circleWithMembers = activeCommentsItem,
+            currentUserId = currentUserId,
+            currentChapterIndex = myCh,
+            onDismiss = { activeCommentsCircleId = null },
+            onPostComment = { body, parent ->
+                activeCommentsItem.book?.let { book ->
+                    onPostComment(book, myCh, body, parent, activeCommentsItem.circle.id)
+                }
+            },
+            onDeleteComment = onDeleteComment,
+            onShareBookLink = {
+                activeCommentsItem.book?.let { onShareBook(it) }
+            }
+        )
+    }
 
     if (editingCircle != null) {
         UpdateNoteDialog(
@@ -266,6 +300,10 @@ fun CirclesScreen(
                             )
                         },
                         onEditNote = { editingCircle = cwm.circle },
+                        onOpenComments = {
+                            onMarkCommentsRead(cwm.circle.id)
+                            activeCommentsCircleId = cwm.circle.id
+                        },
                         onLeave = { onLeaveCircle(cwm.circle.id) }
                     )
                 }
@@ -284,6 +322,7 @@ private fun CircleCard(
     onCopyLink: () -> Unit,
     onShareSystem: () -> Unit,
     onEditNote: () -> Unit,
+    onOpenComments: () -> Unit,
     onLeave: () -> Unit
 ) {
     Card(
@@ -406,6 +445,56 @@ private fun CircleCard(
                 }
             }
 
+            val latestComment = item.comments.lastOrNull()
+            if (latestComment != null || item.unreadCommentCount > 0) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = if (item.unreadCommentCount > 0) {
+                        MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.75f)
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainerLow
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ChatBubbleOutline,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            if (latestComment != null) {
+                                Text(
+                                    text = "${latestComment.authorName}: ${latestComment.body}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                        if (item.unreadCommentCount > 0) {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = MaterialTheme.colorScheme.primary
+                            ) {
+                                Text(
+                                    text = "${item.unreadCommentCount} new",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -420,12 +509,16 @@ private fun CircleCard(
                     Text("Read")
                 }
                 OutlinedButton(
-                    onClick = onEditNote,
-                    shape = RoundedCornerShape(12.dp)
+                    onClick = onOpenComments,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.testTag("circle_comments_${item.circle.id}")
                 ) {
-                    Icon(Icons.Default.EditNote, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.ChatBubbleOutline, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Note")
+                    Text("${item.comments.size}")
+                }
+                IconButton(onClick = onEditNote) {
+                    Icon(Icons.Default.EditNote, contentDescription = "Update reading status note")
                 }
                 IconButton(onClick = onCopyLink) {
                     Icon(Icons.Default.ContentCopy, contentDescription = "Copy book link")

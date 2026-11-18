@@ -1,5 +1,6 @@
 package com.example.ui.library
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
@@ -39,6 +41,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -52,6 +55,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.model.BookCategory
@@ -85,7 +89,10 @@ fun LibraryScreen(
     var searchQuery by remember { mutableStateOf("") }
     var activeFilter by remember { mutableStateOf(LibraryFilter.ALL) }
     var activeCategory by remember { mutableStateOf<BookCategory?>(null) }
+    var browseClassicsWhenEmpty by remember { mutableStateOf(false) }
 
+    val uploadedCount = remember(data.books) { data.books.count { it.book.isPdfUpload } }
+    val hasUploadedBooks = uploadedCount > 0
     val offlineBooks = remember(data.books) { data.books.filter { it.isOfflineReady } }
     val totalOfflineKb = remember(offlineBooks) { offlineBooks.sumOf { it.offlineSizeKb } }
 
@@ -132,7 +139,11 @@ fun LibraryScreen(
                             color = MaterialTheme.colorScheme.onBackground
                         )
                         Text(
-                            text = "${data.books.size} books · ${offlineBooks.size} ready offline",
+                            text = if (hasUploadedBooks) {
+                                "$uploadedCount uploaded · ${data.books.size} books · ${offlineBooks.size} ready offline"
+                            } else {
+                                "No uploaded books yet · ${data.books.size} classics available"
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -152,228 +163,357 @@ fun LibraryScreen(
                 }
             }
 
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        placeholder = { Text("Search title or author…") },
-                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                        singleLine = true,
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("library_search_input")
+            if (!hasUploadedBooks && !browseClassicsWhenEmpty) {
+                item {
+                    EmptyUploadedLibraryView(
+                        classicsCount = data.books.size,
+                        onUploadPdfClick = onUploadPdfClick,
+                        onBrowseClassics = { browseClassicsWhenEmpty = true }
                     )
-                    FilledTonalButton(
-                        onClick = onUploadPdfClick,
-                        shape = RoundedCornerShape(16.dp),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
-                        modifier = Modifier.testTag("upload_pdf_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.UploadFile,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text("PDF")
-                    }
                 }
-            }
-
-            // Personal PDF Upload Callout Banner
-            item {
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+            } else {
+                item {
                     Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.PictureAsPdf,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(28.dp)
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            placeholder = { Text("Search title or author…") },
+                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                            singleLine = true,
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("library_search_input")
                         )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Read Your Own PDF Books",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                            Text(
-                                text = "Import any PDF from your device with offline access, night mode & progress tracking.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
-                            )
-                        }
-                        Button(
+                        FilledTonalButton(
                             onClick = onUploadPdfClick,
-                            modifier = Modifier.testTag("upload_pdf_banner_button")
+                            shape = RoundedCornerShape(16.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
+                            modifier = Modifier.testTag("upload_pdf_button")
                         ) {
-                            Text("Upload")
-                        }
-                    }
-                }
-            }
-
-            // Offline Access Storage Banner
-            item {
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.OfflinePin,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                            modifier = Modifier.size(28.dp)
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Offline Access Vault",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            Icon(
+                                imageVector = Icons.Default.UploadFile,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
                             )
-                            Text(
-                                text = "${offlineBooks.size} of ${data.books.size} books cached locally ($totalOfflineKb KB)",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f)
-                            )
-                        }
-                        if (offlineBooks.size < data.books.size) {
-                            FilledTonalButton(
-                                onClick = onDownloadAllOffline,
-                                modifier = Modifier.testTag("download_all_offline_button")
-                            ) {
-                                Text("Save All")
-                            }
+                            Spacer(Modifier.width(6.dp))
+                            Text("PDF")
                         }
                     }
                 }
-            }
 
-            // Status Filter Chips
-            item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(LibraryFilter.entries) { filter ->
-                        FilterChip(
-                            selected = activeFilter == filter,
-                            onClick = { activeFilter = filter },
-                            label = { Text(filter.label) },
-                            modifier = Modifier.testTag("filter_${filter.name.lowercase()}")
-                        )
-                    }
-                }
-            }
-
-            // Category Chips
-            item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    item {
-                        FilterChip(
-                            selected = activeCategory == null,
-                            onClick = { activeCategory = null },
-                            label = { Text("All Genres") }
-                        )
-                    }
-                    items(BookCategory.entries) { cat ->
-                        FilterChip(
-                            selected = activeCategory == cat,
-                            onClick = { activeCategory = if (activeCategory == cat) null else cat },
-                            label = { Text(cat.label) }
-                        )
-                    }
-                }
-            }
-
-            if (filteredBooks.isEmpty()) {
+                // Personal PDF Upload Callout Banner
                 item {
                     Surface(
                         shape = RoundedCornerShape(20.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(
-                            modifier = Modifier.padding(28.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             Icon(
-                                imageVector = if (activeFilter == LibraryFilter.MY_PDFS) {
-                                    Icons.Default.PictureAsPdf
-                                } else {
-                                    Icons.AutoMirrored.Filled.MenuBook
-                                },
+                                imageVector = Icons.Default.PictureAsPdf,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(36.dp)
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(28.dp)
                             )
-                            Text(
-                                text = if (activeFilter == LibraryFilter.MY_PDFS) {
-                                    "No PDF books uploaded yet"
-                                } else {
-                                    "No matching books"
-                                },
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurface
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Read Your Own PDF Books",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                                Text(
+                                    text = "Import any PDF from your device with offline access, night mode & progress tracking.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
+                                )
+                            }
+                            Button(
+                                onClick = onUploadPdfClick,
+                                modifier = Modifier.testTag("upload_pdf_banner_button")
+                            ) {
+                                Text("Upload")
+                            }
+                        }
+                    }
+                }
+
+                // Offline Access Storage Banner
+                item {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.OfflinePin,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.size(28.dp)
                             )
-                            Text(
-                                text = if (activeFilter == LibraryFilter.MY_PDFS) {
-                                    "Upload a PDF from your device to read with bookmarks, zoom, and night mode."
-                                } else {
-                                    "Clear filters or search terms to explore the full shelf."
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            if (activeFilter == LibraryFilter.MY_PDFS) {
-                                Button(onClick = onUploadPdfClick) {
-                                    Text("Upload PDF Book")
-                                }
-                            } else {
-                                TextButton(
-                                    onClick = {
-                                        searchQuery = ""
-                                        activeFilter = LibraryFilter.ALL
-                                        activeCategory = null
-                                    }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Offline Access Vault",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                                Text(
+                                    text = "${offlineBooks.size} of ${data.books.size} books cached locally ($totalOfflineKb KB)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f)
+                                )
+                            }
+                            if (offlineBooks.size < data.books.size) {
+                                FilledTonalButton(
+                                    onClick = onDownloadAllOffline,
+                                    modifier = Modifier.testTag("download_all_offline_button")
                                 ) {
-                                    Text("Reset Filters")
+                                    Text("Save All")
                                 }
                             }
                         }
                     }
                 }
-            } else {
-                items(filteredBooks, key = { it.book.id }) { item ->
-                    LibraryBookCard(
-                        item = item,
-                        isOnline = data.isOnline,
-                        onRead = { onOpenBook(item.book, item.currentChapter) },
-                        onToggleOffline = { onToggleOffline(item.book, item.isOfflineReady) },
-                        onShare = { onShareBook(item.book) },
-                        onDeletePdf = { onDeleteUploadedPdf(item.book.id) }
-                    )
+
+                // Status Filter Chips
+                item {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(LibraryFilter.entries) { filter ->
+                            FilterChip(
+                                selected = activeFilter == filter,
+                                onClick = { activeFilter = filter },
+                                label = { Text(filter.label) },
+                                modifier = Modifier.testTag("filter_${filter.name.lowercase()}")
+                            )
+                        }
+                    }
+                }
+
+                // Category Chips
+                item {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        item {
+                            FilterChip(
+                                selected = activeCategory == null,
+                                onClick = { activeCategory = null },
+                                label = { Text("All Genres") }
+                            )
+                        }
+                        items(BookCategory.entries) { cat ->
+                            FilterChip(
+                                selected = activeCategory == cat,
+                                onClick = { activeCategory = if (activeCategory == cat) null else cat },
+                                label = { Text(cat.label) }
+                            )
+                        }
+                    }
+                }
+
+                if (filteredBooks.isEmpty()) {
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(28.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (activeFilter == LibraryFilter.MY_PDFS) {
+                                        Icons.Default.PictureAsPdf
+                                    } else {
+                                        Icons.AutoMirrored.Filled.MenuBook
+                                    },
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                                Text(
+                                    text = if (activeFilter == LibraryFilter.MY_PDFS) {
+                                        "No PDF books uploaded yet"
+                                    } else {
+                                        "No matching books"
+                                    },
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = if (activeFilter == LibraryFilter.MY_PDFS) {
+                                        "Upload a PDF from your device to read with bookmarks, zoom, and night mode."
+                                    } else {
+                                        "Clear filters or search terms to explore the full shelf."
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (activeFilter == LibraryFilter.MY_PDFS) {
+                                    Button(onClick = onUploadPdfClick) {
+                                        Text("Upload PDF Book")
+                                    }
+                                } else {
+                                    TextButton(
+                                        onClick = {
+                                            searchQuery = ""
+                                            activeFilter = LibraryFilter.ALL
+                                            activeCategory = null
+                                        }
+                                    ) {
+                                        Text("Reset Filters")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    items(filteredBooks, key = { it.book.id }) { item ->
+                        LibraryBookCard(
+                            item = item,
+                            isOnline = data.isOnline,
+                            onRead = { onOpenBook(item.book, item.currentChapter) },
+                            onToggleOffline = { onToggleOffline(item.book, item.isOfflineReady) },
+                            onShare = { onShareBook(item.book) },
+                            onDeletePdf = { onDeleteUploadedPdf(item.book.id) }
+                        )
+                    }
                 }
             }
 
             item { Spacer(Modifier.height(12.dp)) }
+        }
+    }
+}
+
+@Composable
+private fun EmptyUploadedLibraryView(
+    classicsCount: Int,
+    onUploadPdfClick: () -> Unit,
+    onBrowseClassics: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("empty_library_upload_card"),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Card(
+            shape = RoundedCornerShape(26.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+            ),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                    modifier = Modifier.size(72.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.PictureAsPdf,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                            modifier = Modifier.size(34.dp)
+                        )
+                    }
+                }
+
+                Text(
+                    text = "Your personal library is empty",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    text = "Upload your own PDF books to build your offline collection, bookmark pages, and switch effortlessly between Day and Night reading modes.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(Modifier.height(4.dp))
+
+                Button(
+                    onClick = onUploadPdfClick,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .testTag("upload_pdf_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.UploadFile,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Upload a PDF Book")
+                }
+
+                OutlinedButton(
+                    onClick = onBrowseClassics,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("show_curated_classics_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Browse Curated Classics ($classicsCount)")
+                }
+            }
+        }
+
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.OfflinePin,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.size(24.dp)
+                )
+                Text(
+                    text = "Uploaded PDFs are stored privately on your device so they always open offline.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
         }
     }
 }

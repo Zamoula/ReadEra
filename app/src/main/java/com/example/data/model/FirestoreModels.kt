@@ -72,3 +72,20 @@ data class CircleMemberProgress(
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null
 )
+
+@Keep
+@IgnoreExtraProperties
+data class CircleComment(
+    @DocumentId val id: String = "",
+    val circleId: String = "",
+    val bookId: String = "",
+    val authorUid: String = "",
+    val authorName: String = "",
+    val chapterIndex: Long = 0L,
+    val body: String = "",
+    val parentCommentId: String = "",
+    val parentAuthorName: String = "",
+    @ServerTimestamp val createdAt: Timestamp? = null,
+    @ServerTimestamp val updatedAt: Timestamp? = null
+)
+

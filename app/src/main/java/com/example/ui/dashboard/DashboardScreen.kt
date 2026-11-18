@@ -1,6 +1,8 @@
 package com.example.ui.dashboard
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +33,7 @@ import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.OfflinePin
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.Button
@@ -56,12 +59,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.R
 import com.example.data.model.BookDefinition
 import com.example.ui.BookWithProgress
 import com.example.ui.CircleWithMembers
@@ -96,9 +105,13 @@ fun DashboardScreen(
     val totalMinutes = data.profile?.totalMinutesRead?.toInt() ?: 0
     val booksCompleted = data.profile?.booksCompleted?.toInt() ?: 0
     val offlineCount = data.books.count { it.isOfflineReady }
+    val uploadedPdfCount = remember(data.books) { data.books.count { it.book.isPdfUpload } }
+    val hasUploadedBooks = uploadedPdfCount > 0
 
     val featuredBook = remember(data.books) {
-        data.books.firstOrNull { it.progressPercent in 1..99 }
+        data.books.firstOrNull { it.book.isPdfUpload && it.progressPercent in 1..99 }
+            ?: data.books.firstOrNull { it.book.isPdfUpload }
+            ?: data.books.firstOrNull { it.progressPercent in 1..99 }
             ?: data.books.firstOrNull { it.isOfflineReady }
             ?: data.books.first()
     }
@@ -137,104 +150,375 @@ fun DashboardScreen(
         ) {
             // Top Header
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "$greeting, $firstName",
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            ConnectivityBadge(isOnline = data.isOnline)
-                            Text(
-                                text = "$offlineCount offline ready",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        FilledTonalIconButton(
-                            onClick = onToggleNightMode,
-                            modifier = Modifier.testTag("night_mode_toggle")
-                        ) {
-                            Icon(
-                                imageVector = if (data.preferences.nightMode) Icons.Default.LightMode else Icons.Default.DarkMode,
-                                contentDescription = if (data.preferences.nightMode) "Switch to Day Mode" else "Switch to Night Mode"
-                            )
-                        }
-                        IconButton(
-                            onClick = onSignOut,
-                            modifier = Modifier.testTag("sign_out_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.Logout,
-                                contentDescription = "Sign out"
-                            )
-                        }
-                    }
+                DashboardHeader(
+                    greeting = greeting,
+                    firstName = firstName,
+                    isOnline = data.isOnline,
+                    subtitleText = if (hasUploadedBooks) {
+                        "$uploadedPdfCount uploaded · $offlineCount offline ready"
+                    } else {
+                        "Upload a PDF to start your shelf"
+                    },
+                    nightMode = data.preferences.nightMode,
+                    onToggleNightMode = onToggleNightMode,
+                    onSignOut = onSignOut
+                )
+            }
+
+            if (!hasUploadedBooks) {
+                item {
+                    EmptyUploadedBooksDashboard(
+                        onUploadPdfClick = onUploadPdfClick,
+                        onBrowseLibrary = onNavigateToLibrary,
+                        onOpenBookLinkClick = onOpenBookLinkClick
+                    )
+                }
+            } else {
+                // Personalized Reading Goal & Streak Card
+                item {
+                    DailyGoalCard(
+                        todayMinutes = data.todayMinutes,
+                        dailyGoalMinutes = dailyGoal,
+                        streakDays = streakDays,
+                        totalMinutes = totalMinutes,
+                        booksCompleted = booksCompleted,
+                        onEditGoal = { showGoalDialog = true }
+                    )
+                }
+
+                // Continue Reading Hero Card
+                item {
+                    ContinueReadingCard(
+                        item = featuredBook,
+                        onResume = { onOpenBook(featuredBook.book, featuredBook.currentChapter) },
+                        onShare = { onShareBook(featuredBook.book) }
+                    )
+                }
+
+                // 7-Day Reading Activity Chart
+                item {
+                    WeeklyReadingChartCard(
+                        points = data.weeklyActivity,
+                        dailyGoal = dailyGoal
+                    )
+                }
+
+                // Reading With Friends Section
+                item {
+                    FriendsDashboardSection(
+                        circles = data.circles,
+                        currentUserId = currentUserId,
+                        onOpenBook = onOpenBook,
+                        onOpenBookLinkClick = onOpenBookLinkClick,
+                        onSeeAllCircles = onNavigateToCircles
+                    )
+                }
+
+                // Offline Shelf Quick Strip
+                item {
+                    OfflineQuickStrip(
+                        offlineBooks = data.books.filter { it.isOfflineReady },
+                        onOpenBook = onOpenBook,
+                        onSeeLibrary = onNavigateToLibrary,
+                        onUploadPdfClick = onUploadPdfClick
+                    )
                 }
             }
 
-            // Personalized Reading Goal & Streak Card
-            item {
-                DailyGoalCard(
-                    todayMinutes = data.todayMinutes,
-                    dailyGoalMinutes = dailyGoal,
-                    streakDays = streakDays,
-                    totalMinutes = totalMinutes,
-                    booksCompleted = booksCompleted,
-                    onEditGoal = { showGoalDialog = true }
-                )
-            }
-
-            // Continue Reading Hero Card
-            item {
-                ContinueReadingCard(
-                    item = featuredBook,
-                    onResume = { onOpenBook(featuredBook.book, featuredBook.currentChapter) },
-                    onShare = { onShareBook(featuredBook.book) }
-                )
-            }
-
-            // 7-Day Reading Activity Chart
-            item {
-                WeeklyReadingChartCard(
-                    points = data.weeklyActivity,
-                    dailyGoal = dailyGoal
-                )
-            }
-
-            // Reading With Friends Section
-            item {
-                FriendsDashboardSection(
-                    circles = data.circles,
-                    currentUserId = currentUserId,
-                    onOpenBook = onOpenBook,
-                    onOpenBookLinkClick = onOpenBookLinkClick,
-                    onSeeAllCircles = onNavigateToCircles
-                )
-            }
-
-            // Offline Shelf Quick Strip
-            item {
-                OfflineQuickStrip(
-                    offlineBooks = data.books.filter { it.isOfflineReady },
-                    onOpenBook = onOpenBook,
-                    onSeeLibrary = onNavigateToLibrary,
-                    onUploadPdfClick = onUploadPdfClick
-                )
-            }
-
             item { Spacer(Modifier.height(12.dp)) }
+        }
+    }
+}
+
+@Composable
+private fun DashboardHeader(
+    greeting: String,
+    firstName: String,
+    isOnline: Boolean,
+    subtitleText: String,
+    nightMode: Boolean,
+    onToggleNightMode: () -> Unit,
+    onSignOut: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "$greeting, $firstName",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Spacer(Modifier.height(4.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ConnectivityBadge(isOnline = isOnline)
+                Text(
+                    text = subtitleText,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FilledTonalIconButton(
+                onClick = onToggleNightMode,
+                modifier = Modifier.testTag("night_mode_toggle")
+            ) {
+                Icon(
+                    imageVector = if (nightMode) Icons.Default.LightMode else Icons.Default.DarkMode,
+                    contentDescription = if (nightMode) "Switch to Day Mode" else "Switch to Night Mode"
+                )
+            }
+            IconButton(
+                onClick = onSignOut,
+                modifier = Modifier.testTag("sign_out_button")
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Logout,
+                    contentDescription = "Sign out"
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyUploadedBooksDashboard(
+    onUploadPdfClick: () -> Unit,
+    onBrowseLibrary: () -> Unit,
+    onOpenBookLinkClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("empty_uploaded_books_dashboard"),
+        verticalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
+        Card(
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+            ),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(190.dp)
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.img_reading_sanctuary_1795027274102),
+                        contentDescription = "Your personal reading sanctuary",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color(0x22090B10),
+                                        Color(0xCC090B10)
+                                    )
+                                )
+                            )
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PictureAsPdf,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onTertiary,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Text(
+                                text = "PERSONAL PDF LIBRARY",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onTertiary
+                            )
+                        }
+                    }
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "Upload your first book",
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "No uploaded PDFs on your shelf yet.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.85f)
+                        )
+                    }
+                }
+
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = "Add any PDF book from your phone to unlock your reading dashboard, track your daily streak, bookmark pages, and read offline in Day or Night mode.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Button(
+                        onClick = onUploadPdfClick,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp)
+                            .testTag("empty_dashboard_upload_pdf_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.UploadFile,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            text = "Upload a PDF Book",
+                            style = MaterialTheme.typography.titleSmall
+                        )
+                    }
+                }
+            }
+        }
+
+        Card(
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Text(
+                    text = "Why read your PDFs in Folio",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                UploadBenefitRow(
+                    icon = Icons.Default.OfflinePin,
+                    title = "Instant Offline Access",
+                    description = "Saved privately on your device so your books open even without signal."
+                )
+                UploadBenefitRow(
+                    icon = Icons.Default.DarkMode,
+                    title = "Night & Sepia Comfort",
+                    description = "Read late at night with smart Night/OLED inversion and warm Sepia tint."
+                )
+                UploadBenefitRow(
+                    icon = Icons.AutoMirrored.Filled.MenuBook,
+                    title = "Page Tracking & Bookmarks",
+                    description = "Pinch to zoom, jump via page scrubber, and save your place automatically."
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            OutlinedButton(
+                onClick = onBrowseLibrary,
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
+                    .testTag("empty_dashboard_browse_library_button")
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text("Explore Library")
+            }
+            OutlinedButton(
+                onClick = onOpenBookLinkClick,
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
+                    .testTag("open_book_link_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Link,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text("Friend Link")
+            }
+        }
+    }
+}
+
+@Composable
+private fun UploadBenefitRow(
+    icon: ImageVector,
+    title: String,
+    description: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.primaryContainer
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier
+                    .padding(9.dp)
+                    .size(18.dp)
+            )
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -690,16 +974,30 @@ private fun FriendsDashboardSection(
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = "${cwm.circle.memberUids.size} reader(s) · Code ${cwm.circle.shareCode}",
+                                    text = "${cwm.circle.memberUids.size} reader(s) · ${cwm.comments.size} comment(s)",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            Text(
-                                text = "Read",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                            if (cwm.unreadCommentCount > 0) {
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = MaterialTheme.colorScheme.primary
+                                ) {
+                                    Text(
+                                        text = "${cwm.unreadCommentCount} new",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
+                            } else {
+                                Text(
+                                    text = "Read",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
                         }
 
                         cwm.members.take(3).forEach { member ->

@@ -39,6 +39,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.DarkMode
@@ -46,6 +47,8 @@ import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.OfflinePin
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -93,8 +96,11 @@ import com.example.data.local.OfflineBookRepository
 import com.example.data.local.ReaderPreferences
 import com.example.data.model.BookChapter
 import com.example.data.model.BookDefinition
+import com.example.data.model.CircleComment
 import com.example.data.model.ReaderThemeMode
 import com.example.ui.BookWithProgress
+import com.example.ui.CircleWithMembers
+import com.example.ui.components.BookCommentsBottomSheet
 import com.example.ui.theme.LiterataFontFamily
 import com.example.ui.theme.NewsreaderFontFamily
 import com.example.ui.theme.PlusJakartaFontFamily
@@ -123,6 +129,8 @@ fun ReaderScreen(
     preferences: ReaderPreferences,
     isOnline: Boolean,
     offlineRepository: OfflineBookRepository,
+    currentUserId: String,
+    circleWithMembers: CircleWithMembers?,
     onSaveChapterProgress: (chapterIndex: Int, minutesDelta: Int, markCompleted: Boolean) -> Unit,
     onSaveBookmark: (chapterIndex: Int, note: String) -> Unit,
     onShareBook: (BookDefinition) -> Unit,
@@ -132,6 +140,9 @@ fun ReaderScreen(
     onAdjustFontSize: (Int) -> Unit,
     onSetLineSpacing: (Int) -> Unit,
     onSetUseSerif: (Boolean) -> Unit,
+    onPostComment: (chapterIndex: Int, body: String, parentComment: CircleComment?) -> Unit,
+    onDeleteComment: (circleId: String, commentId: String) -> Unit,
+    onMarkCommentsRead: (circleId: String) -> Unit,
     onBack: () -> Unit
 ) {
     BackHandler { onBack() }
@@ -147,7 +158,16 @@ fun ReaderScreen(
     var showChrome by remember { mutableStateOf(true) }
     var showAppearanceSheet by remember { mutableStateOf(false) }
     var showChaptersSheet by remember { mutableStateOf(false) }
+    var showCommentsSheet by remember { mutableStateOf(false) }
     var offlineChapters by remember(book.id) { mutableStateOf<List<BookChapter>?>(null) }
+
+    LaunchedEffect(showCommentsSheet, circleWithMembers?.comments?.size) {
+        if (showCommentsSheet) {
+            circleWithMembers?.circle?.id?.let { cid ->
+                onMarkCommentsRead(cid)
+            }
+        }
+    }
 
     // Load chapters from Room if available locally (for non-PDF catalog books)
     LaunchedEffect(book.id, bookItem.isOfflineReady) {
@@ -386,6 +406,32 @@ fun ReaderScreen(
                             }
                         }
                     }
+
+                    Spacer(Modifier.height(10.dp))
+
+                    val commentCount = circleWithMembers?.comments?.size ?: 0
+                    val unreadComments = circleWithMembers?.unreadCommentCount ?: 0
+                    OutlinedButton(
+                        onClick = { showCommentsSheet = true },
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("chapter_footer_comments_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ChatBubbleOutline,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = when {
+                                unreadComments > 0 -> "View $unreadComments New Friend Comment(s)"
+                                commentCount > 0 -> "Comments & Replies ($commentCount)"
+                                else -> "Comment on This Book"
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -465,6 +511,34 @@ fun ReaderScreen(
                             )
                         }
                         if (!book.isPdfUpload) {
+                            val totalComments = circleWithMembers?.comments?.size ?: 0
+                            val unreadComments = circleWithMembers?.unreadCommentCount ?: 0
+                            IconButton(
+                                onClick = { showCommentsSheet = true },
+                                modifier = Modifier.testTag("reader_comments_button")
+                            ) {
+                                BadgedBox(
+                                    badge = {
+                                        if (unreadComments > 0) {
+                                            Badge { Text("$unreadComments") }
+                                        } else if (totalComments > 0) {
+                                            Badge(
+                                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                            ) {
+                                                Text("$totalComments")
+                                            }
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ChatBubbleOutline,
+                                        contentDescription = "Comments and replies",
+                                        tint = inkColor
+                                    )
+                                }
+                            }
+
                             IconButton(
                                 onClick = { onShareBook(book) },
                                 modifier = Modifier.testTag("reader_share_button")
@@ -860,6 +934,23 @@ fun ReaderScreen(
                     Spacer(Modifier.height(14.dp))
                 }
             }
+        }
+
+        if (showCommentsSheet) {
+            BookCommentsBottomSheet(
+                bookTitle = book.title,
+                circleWithMembers = circleWithMembers,
+                currentUserId = currentUserId,
+                currentChapterIndex = currentChapterIndex,
+                onDismiss = { showCommentsSheet = false },
+                onPostComment = { body, parent ->
+                    onPostComment(currentChapterIndex, body, parent)
+                },
+                onDeleteComment = onDeleteComment,
+                onShareBookLink = if (!book.isPdfUpload) {
+                    { onShareBook(book) }
+                } else null
+            )
         }
     }
 }

@@ -319,3 +319,113 @@ test("Shared reading circles & friend progress tracking via book link", async ()
     aliceDb.collection("reading_circles").doc(circleId).collection("members").get()
   );
 });
+
+test("Shared book comments and threaded replies among circle link members", async () => {
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID).firestore();
+  const charlieDb = testEnv.authenticatedContext(CHARLIE_UID).firestore();
+  const created = pastDate(10000);
+  const circleId = "circle_odyssey_9988";
+
+  // Alice creates circle
+  await assertSucceeds(
+    aliceDb.collection("reading_circles").doc(circleId).set({
+      creatorId: ALICE_UID,
+      bookId: "odyssey",
+      bookTitle: "The Odyssey",
+      bookAuthor: "Homer",
+      totalChapters: 6,
+      shareCode: circleId,
+      memberUids: [ALICE_UID],
+      createdAt: created,
+      updatedAt: created,
+    })
+  );
+
+  // Alice posts a top-level comment while reading
+  await assertSucceeds(
+    aliceDb.collection("reading_circles").doc(circleId).collection("comments").doc("cmt_1").set({
+      circleId,
+      bookId: "odyssey",
+      authorUid: ALICE_UID,
+      authorName: "Alice",
+      chapterIndex: 1,
+      body: "The hospitality scene in Book I sets the whole tone.",
+      parentCommentId: "",
+      parentAuthorName: "",
+      createdAt: pastDate(6000),
+      updatedAt: pastDate(6000),
+    })
+  );
+
+  // Non-member Charlie cannot read or write comments
+  await assertFails(
+    charlieDb.collection("reading_circles").doc(circleId).collection("comments").get()
+  );
+  await assertFails(
+    charlieDb.collection("reading_circles").doc(circleId).collection("comments").doc("cmt_charlie").set({
+      circleId,
+      bookId: "odyssey",
+      authorUid: CHARLIE_UID,
+      authorName: "Charlie",
+      chapterIndex: 0,
+      body: "Intruder comment",
+      parentCommentId: "",
+      parentAuthorName: "",
+      createdAt: pastDate(4000),
+      updatedAt: pastDate(4000),
+    })
+  );
+
+  // Bob opens the book link and joins
+  await assertSucceeds(
+    bobDb.collection("reading_circles").doc(circleId).update({
+      memberUids: [ALICE_UID, BOB_UID],
+      updatedAt: pastDate(5000),
+    })
+  );
+
+  // Bob can list Alice's earlier comment and post a reply to it
+  await assertSucceeds(
+    bobDb.collection("reading_circles").doc(circleId).collection("comments").get()
+  );
+  await assertSucceeds(
+    bobDb.collection("reading_circles").doc(circleId).collection("comments").doc("cmt_2").set({
+      circleId,
+      bookId: "odyssey",
+      authorUid: BOB_UID,
+      authorName: "Bob",
+      chapterIndex: 1,
+      body: "Completely agree — Athena's arrival is iconic!",
+      parentCommentId: "cmt_1",
+      parentAuthorName: "Alice",
+      createdAt: pastDate(3000),
+      updatedAt: pastDate(3000),
+    })
+  );
+
+  // Impersonating another authorUid fails
+  await assertFails(
+    bobDb.collection("reading_circles").doc(circleId).collection("comments").doc("cmt_spoof").set({
+      circleId,
+      bookId: "odyssey",
+      authorUid: ALICE_UID,
+      authorName: "Alice",
+      chapterIndex: 1,
+      body: "Spoofed",
+      parentCommentId: "",
+      parentAuthorName: "",
+      createdAt: pastDate(2000),
+      updatedAt: pastDate(2000),
+    })
+  );
+
+  // Bob cannot delete Alice's comment, but can delete his own
+  await assertFails(
+    bobDb.collection("reading_circles").doc(circleId).collection("comments").doc("cmt_1").delete()
+  );
+  await assertSucceeds(
+    bobDb.collection("reading_circles").doc(circleId).collection("comments").doc("cmt_2").delete()
+  );
+});
+
