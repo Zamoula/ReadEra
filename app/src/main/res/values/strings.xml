@@ -1,0 +1,20 @@
+<resources>
+    <string name="app_name">Folio</string>
+    <string name="auth_headline">Your quiet sanctuary for books</string>
+    <string name="auth_subheadline">Read offline anywhere, slip into warm night mode, and share book links to track chapters with friends.</string>
+    <string name="sign_in_google">Sign in with Google</string>
+    <string name="nav_dashboard">Dashboard</string>
+    <string name="nav_library">Library</string>
+    <string name="nav_circles">Friends</string>
+    <string name="status_online">Cloud Synced</string>
+    <string name="status_offline">Offline Mode</string>
+    <string name="offline_ready_badge">Offline Ready</string>
+    <string name="download_offline">Save Offline</string>
+    <string name="remove_offline">Remove Offline</string>
+    <string name="share_book_link">Share Book Link</string>
+    <string name="open_book_link">Open Book Link</string>
+    <string name="night_mode_label">Night Mode</string>
+    <string name="continue_reading">Continue Reading</string>
+    <string name="start_reading">Start Reading</string>
+    <string name="sign_out">Sign out</string>
+</resources>

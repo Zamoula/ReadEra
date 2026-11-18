@@ -1,0 +1,66 @@
+package com.example.ui.theme
+
+import androidx.compose.ui.graphics.Color
+
+// Daylight Obsidian, Cobalt Blue & Marigold Yellow Palette
+val DayBackground = Color(0xFFF7F9FC)
+val DaySurface = Color(0xFFEEF2F8)
+val DaySurfaceContainer = Color(0xFFE3EAF4)
+val DaySurfaceContainerHigh = Color(0xFFD5DFEE)
+val DayPrimary = Color(0xFF1A4FD6)
+val DayOnPrimary = Color(0xFFFFFFFF)
+val DayPrimaryContainer = Color(0xFFDCE6FF)
+val DayOnPrimaryContainer = Color(0xFF0A1E5E)
+val DaySecondary = Color(0xFF0F172A)
+val DayOnSecondary = Color(0xFFFACC15)
+val DaySecondaryContainer = Color(0xFFFEF3C7)
+val DayOnSecondaryContainer = Color(0xFF111827)
+val DayTertiary = Color(0xFFEAB308)
+val DayOnTertiary = Color(0xFF0B0D12)
+val DayTertiaryContainer = Color(0xFFFEF08A)
+val DayOnTertiaryContainer = Color(0xFF111318)
+val DayOnBackground = Color(0xFF0B0D12)
+val DayOnSurface = Color(0xFF0B0D12)
+val DayOnSurfaceVariant = Color(0xFF475569)
+val DayOutline = Color(0xFFCBD5E1)
+val DayError = Color(0xFFB3261E)
+
+// Night Mode Obsidian Black, Electric Blue & Luminous Yellow Palette
+val NightBackground = Color(0xFF090B10)
+val NightSurface = Color(0xFF111520)
+val NightSurfaceContainer = Color(0xFF171D2B)
+val NightSurfaceContainerHigh = Color(0xFF20283B)
+val NightPrimary = Color(0xFFFACC15)
+val NightOnPrimary = Color(0xFF090B10)
+val NightPrimaryContainer = Color(0xFF1E3A8A)
+val NightOnPrimaryContainer = Color(0xFFFEF08A)
+val NightSecondary = Color(0xFF60A5FA)
+val NightOnSecondary = Color(0xFF08142B)
+val NightSecondaryContainer = Color(0xFF172554)
+val NightOnSecondaryContainer = Color(0xFFDBEAFE)
+val NightTertiary = Color(0xFFFDE047)
+val NightOnTertiary = Color(0xFF090B10)
+val NightTertiaryContainer = Color(0xFF332900)
+val NightOnTertiaryContainer = Color(0xFFFEF08A)
+val NightOnBackground = Color(0xFFF1F5F9)
+val NightOnSurface = Color(0xFFF1F5F9)
+val NightOnSurfaceVariant = Color(0xFF94A3B8)
+val NightOutline = Color(0xFF293548)
+val NightError = Color(0xFFF2B8B5)
+
+// Reader Surface Palettes
+val ReaderPaperBg = Color(0xFFFBF7F0)
+val ReaderPaperInk = Color(0xFF12151C)
+val ReaderPaperMuted = Color(0xFF5A6475)
+
+val ReaderSepiaBg = Color(0xFFF2E6D0)
+val ReaderSepiaInk = Color(0xFF2D251C)
+val ReaderSepiaMuted = Color(0xFF6B5A48)
+
+val ReaderNightBg = Color(0xFF0D111A)
+val ReaderNightInk = Color(0xFFE5EAF2)
+val ReaderNightMuted = Color(0xFF8C9BB2)
+
+val ReaderOledBg = Color(0xFF000000)
+val ReaderOledInk = Color(0xFFD6DCE5)
+val ReaderOledMuted = Color(0xFF7D8A9E)

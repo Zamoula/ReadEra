@@ -1,0 +1,6 @@
+{
+  "name": "Folio",
+  "description": "Personalized book reading app with offline access, night mode, and friend progress sharing via book links.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,283 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated reader's personalized dashboard stats and reader appearance preferences.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the owner."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name shown on the reading dashboard and friend circles."
+        },
+        "dailyGoalMinutes": {
+          "type": "integer",
+          "description": "Personalized daily reading goal in minutes (5 to 240)."
+        },
+        "streakDays": {
+          "type": "integer",
+          "description": "Consecutive reading days streak."
+        },
+        "totalMinutesRead": {
+          "type": "integer",
+          "description": "Cumulative reading minutes logged."
+        },
+        "booksCompleted": {
+          "type": "integer",
+          "description": "Total completed books count."
+        },
+        "nightMode": {
+          "type": "boolean",
+          "description": "Whether app-wide night mode is active."
+        },
+        "readerFontSize": {
+          "type": "integer",
+          "description": "Preferred reader body font size in sp (14 to 28)."
+        },
+        "readerTheme": {
+          "type": "string",
+          "enum": ["PAPER", "SEPIA", "NIGHT", "OLED"],
+          "description": "Preferred reader surface theme."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of profile creation (FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": [
+        "userId",
+        "displayName",
+        "dailyGoalMinutes",
+        "streakDays",
+        "totalMinutesRead",
+        "booksCompleted",
+        "nightMode",
+        "readerFontSize",
+        "readerTheme",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "LibraryBook": {
+      "title": "LibraryBook",
+      "description": "Reader's per-book progress, bookmark, and offline status in their personal shelf.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID."
+        },
+        "bookId": {
+          "type": "string",
+          "description": "Catalog identifier for the book."
+        },
+        "title": {
+          "type": "string",
+          "description": "Book title."
+        },
+        "author": {
+          "type": "string",
+          "description": "Book author."
+        },
+        "currentChapter": {
+          "type": "integer",
+          "description": "Zero-based index of the current chapter."
+        },
+        "totalChapters": {
+          "type": "integer",
+          "description": "Total number of chapters in the book."
+        },
+        "progressPercent": {
+          "type": "integer",
+          "description": "Completion percentage from 0 to 100."
+        },
+        "minutesRead": {
+          "type": "integer",
+          "description": "Minutes spent reading this book."
+        },
+        "bookmarkChapter": {
+          "type": "integer",
+          "description": "Bookmarked chapter index."
+        },
+        "bookmarkNote": {
+          "type": "string",
+          "description": "Optional note attached to the bookmark."
+        },
+        "offlineSaved": {
+          "type": "boolean",
+          "description": "Whether the book is cached locally for offline access."
+        },
+        "completed": {
+          "type": "boolean",
+          "description": "Whether the reader finished the book."
+        },
+        "lastReadAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of most recent reading activity."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of addition to library."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update."
+        }
+      },
+      "required": [
+        "userId",
+        "bookId",
+        "title",
+        "author",
+        "currentChapter",
+        "totalChapters",
+        "progressPercent",
+        "minutesRead",
+        "bookmarkChapter",
+        "bookmarkNote",
+        "offlineSaved",
+        "completed",
+        "lastReadAt",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ReadingCircle": {
+      "title": "ReadingCircle",
+      "description": "Shared book link room allowing friends to read the same book and track progress together.",
+      "type": "object",
+      "properties": {
+        "creatorId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the user who created the shared book link."
+        },
+        "bookId": {
+          "type": "string",
+          "description": "Shared book identifier."
+        },
+        "bookTitle": {
+          "type": "string",
+          "description": "Title of the shared book."
+        },
+        "bookAuthor": {
+          "type": "string",
+          "description": "Author of the shared book."
+        },
+        "totalChapters": {
+          "type": "integer",
+          "description": "Total chapters in the shared book."
+        },
+        "shareCode": {
+          "type": "string",
+          "description": "Short shareable code / link token."
+        },
+        "memberUids": {
+          "type": "array",
+          "description": "Bounded list (max 20) of participant UIDs."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of circle creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last membership update."
+        }
+      },
+      "required": [
+        "creatorId",
+        "bookId",
+        "bookTitle",
+        "bookAuthor",
+        "totalChapters",
+        "shareCode",
+        "memberUids",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CircleMemberProgress": {
+      "title": "CircleMemberProgress",
+      "description": "Live reading progress of a participant inside a shared reading circle.",
+      "type": "object",
+      "properties": {
+        "memberUid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the participant."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Participant display name."
+        },
+        "currentChapter": {
+          "type": "integer",
+          "description": "Current chapter index."
+        },
+        "totalChapters": {
+          "type": "integer",
+          "description": "Total chapters in the book."
+        },
+        "progressPercent": {
+          "type": "integer",
+          "description": "Progress percentage (0 to 100)."
+        },
+        "statusNote": {
+          "type": "string",
+          "description": "Short reading status note visible to friends in the circle."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of joining."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of latest reading progress update."
+        }
+      },
+      "required": [
+        "memberUid",
+        "displayName",
+        "currentChapter",
+        "totalChapters",
+        "progressPercent",
+        "statusNote",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User reading profile, streak, goal, and theme settings."
+    },
+    "/users/{userId}/library/{bookId}": {
+      "schema": { "$ref": "#/entities/LibraryBook" },
+      "description": "Personal book shelf, reading progress, bookmarks, and offline state."
+    },
+    "/reading_circles/{circleId}": {
+      "schema": { "$ref": "#/entities/ReadingCircle" },
+      "description": "Shared book link circles for reading the same book with friends."
+    },
+    "/reading_circles/{circleId}/members/{memberUid}": {
+      "schema": { "$ref": "#/entities/CircleMemberProgress" },
+      "description": "Per-member live reading progress within a shared reading circle."
+    }
+  }
+}

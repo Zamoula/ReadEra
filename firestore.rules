@@ -1,0 +1,257 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80 &&
+             data.dailyGoalMinutes is int && data.dailyGoalMinutes >= 5 && data.dailyGoalMinutes <= 240 &&
+             data.streakDays is int && data.streakDays >= 0 && data.streakDays <= 10000 &&
+             data.totalMinutesRead is int && data.totalMinutesRead >= 0 && data.totalMinutesRead <= 1000000 &&
+             data.booksCompleted is int && data.booksCompleted >= 0 && data.booksCompleted <= 10000 &&
+             data.nightMode is bool &&
+             data.readerFontSize is int && data.readerFontSize >= 14 && data.readerFontSize <= 28 &&
+             data.readerTheme is string && data.readerTheme in ['PAPER', 'SEPIA', 'NIGHT', 'OLED'] &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidLibraryBook(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.bookId is string && data.bookId.size() >= 1 && data.bookId.size() <= 64 &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 150 &&
+             data.author is string && data.author.size() >= 1 && data.author.size() <= 100 &&
+             data.currentChapter is int && data.currentChapter >= 0 && data.currentChapter <= 10000 &&
+             data.totalChapters is int && data.totalChapters >= 1 && data.totalChapters <= 10000 &&
+             data.progressPercent is int && data.progressPercent >= 0 && data.progressPercent <= 100 &&
+             data.minutesRead is int && data.minutesRead >= 0 && data.minutesRead <= 1000000 &&
+             data.bookmarkChapter is int && data.bookmarkChapter >= 0 && data.bookmarkChapter <= 10000 &&
+             data.bookmarkNote is string && data.bookmarkNote.size() <= 200 &&
+             data.offlineSaved is bool &&
+             data.completed is bool &&
+             data.lastReadAt is timestamp && data.lastReadAt <= request.time &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidReadingCircle(data) {
+      return data.creatorId is string && data.creatorId.size() >= 1 && data.creatorId.size() <= 128 &&
+             data.bookId is string && data.bookId.size() >= 1 && data.bookId.size() <= 64 &&
+             data.bookTitle is string && data.bookTitle.size() >= 1 && data.bookTitle.size() <= 150 &&
+             data.bookAuthor is string && data.bookAuthor.size() >= 1 && data.bookAuthor.size() <= 100 &&
+             data.totalChapters is int && data.totalChapters >= 1 && data.totalChapters <= 500 &&
+             data.shareCode is string && data.shareCode.size() >= 4 && data.shareCode.size() <= 64 &&
+             data.memberUids is list && data.memberUids.size() >= 1 && data.memberUids.size() <= 20 &&
+             data.memberUids[0] is string &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidCircleMember(data) {
+      return data.memberUid is string && data.memberUid.size() >= 1 && data.memberUid.size() <= 128 &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80 &&
+             data.currentChapter is int && data.currentChapter >= 0 && data.currentChapter <= 500 &&
+             data.totalChapters is int && data.totalChapters >= 1 && data.totalChapters <= 500 &&
+             data.progressPercent is int && data.progressPercent >= 0 && data.progressPercent <= 100 &&
+             data.statusNote is string && data.statusNote.size() <= 140 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+      allow list: if false;
+
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll([
+                         'userId', 'displayName', 'dailyGoalMinutes', 'streakDays',
+                         'totalMinutesRead', 'booksCompleted', 'nightMode',
+                         'readerFontSize', 'readerTheme', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'displayName', 'dailyGoalMinutes', 'streakDays',
+                         'totalMinutesRead', 'booksCompleted', 'nightMode',
+                         'readerFontSize', 'readerTheme', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidUserProfile(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'displayName', 'dailyGoalMinutes', 'streakDays',
+                         'totalMinutesRead', 'booksCompleted', 'nightMode',
+                         'readerFontSize', 'readerTheme', 'updatedAt'
+                       ]);
+
+      allow delete: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+
+      match /library/{bookId} {
+        allow get: if isSignedIn() && isValidId(userId) && isValidId(bookId) && request.auth.uid == userId;
+        allow list: if isSignedIn() && request.auth.uid == userId;
+
+        allow create: if isSignedIn() &&
+                         isValidId(userId) &&
+                         isValidId(bookId) &&
+                         request.auth.uid == userId &&
+                         incoming().userId == request.auth.uid &&
+                         incoming().bookId == bookId &&
+                         incoming().keys().hasAll([
+                           'userId', 'bookId', 'title', 'author', 'currentChapter',
+                           'totalChapters', 'progressPercent', 'minutesRead',
+                           'bookmarkChapter', 'bookmarkNote', 'offlineSaved',
+                           'completed', 'lastReadAt', 'createdAt', 'updatedAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'userId', 'bookId', 'title', 'author', 'currentChapter',
+                           'totalChapters', 'progressPercent', 'minutesRead',
+                           'bookmarkChapter', 'bookmarkNote', 'offlineSaved',
+                           'completed', 'lastReadAt', 'createdAt', 'updatedAt'
+                         ]) &&
+                         isValidLibraryBook(incoming());
+
+        allow update: if isSignedIn() &&
+                         isValidId(userId) &&
+                         isValidId(bookId) &&
+                         request.auth.uid == userId &&
+                         isValidLibraryBook(incoming()) &&
+                         incoming().userId == existing().userId &&
+                         incoming().bookId == existing().bookId &&
+                         incoming().title == existing().title &&
+                         incoming().author == existing().author &&
+                         incoming().totalChapters == existing().totalChapters &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'currentChapter', 'progressPercent', 'minutesRead',
+                           'bookmarkChapter', 'bookmarkNote', 'offlineSaved',
+                           'completed', 'lastReadAt', 'updatedAt'
+                         ]);
+
+        allow delete: if isSignedIn() && isValidId(userId) && isValidId(bookId) && request.auth.uid == userId;
+      }
+    }
+
+    match /reading_circles/{circleId} {
+      allow get: if isSignedIn() && isValidId(circleId);
+      allow list: if isSignedIn() && request.auth.uid in resource.data.memberUids;
+
+      allow create: if isSignedIn() &&
+                       isValidId(circleId) &&
+                       incoming().creatorId == request.auth.uid &&
+                       incoming().memberUids.size() == 1 &&
+                       incoming().memberUids[0] == request.auth.uid &&
+                       incoming().keys().hasAll([
+                         'creatorId', 'bookId', 'bookTitle', 'bookAuthor',
+                         'totalChapters', 'shareCode', 'memberUids', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'creatorId', 'bookId', 'bookTitle', 'bookAuthor',
+                         'totalChapters', 'shareCode', 'memberUids', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidReadingCircle(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(circleId) &&
+                       isValidReadingCircle(incoming()) &&
+                       incoming().creatorId == existing().creatorId &&
+                       incoming().bookId == existing().bookId &&
+                       incoming().bookTitle == existing().bookTitle &&
+                       incoming().bookAuthor == existing().bookAuthor &&
+                       incoming().totalChapters == existing().totalChapters &&
+                       incoming().shareCode == existing().shareCode &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['memberUids', 'updatedAt']) &&
+                       (
+                         // Join circle via shared book link
+                         (!(request.auth.uid in existing().memberUids) &&
+                           request.auth.uid in incoming().memberUids &&
+                           incoming().memberUids.hasAll(existing().memberUids) &&
+                           incoming().memberUids.size() == existing().memberUids.size() + 1) ||
+                         // Leave circle (non-creator)
+                         (request.auth.uid in existing().memberUids &&
+                           request.auth.uid != existing().creatorId &&
+                           !(request.auth.uid in incoming().memberUids) &&
+                           existing().memberUids.hasAll(incoming().memberUids) &&
+                           incoming().memberUids.size() == existing().memberUids.size() - 1)
+                       );
+
+      allow delete: if isSignedIn() && isValidId(circleId) && existing().creatorId == request.auth.uid;
+
+      match /members/{memberUid} {
+        allow get: if isSignedIn() &&
+                      isValidId(circleId) &&
+                      isValidId(memberUid) &&
+                      exists(/databases/$(database)/documents/reading_circles/$(circleId)) &&
+                      request.auth.uid in get(/databases/$(database)/documents/reading_circles/$(circleId)).data.memberUids;
+        allow list: if false;
+
+        allow create: if isSignedIn() &&
+                         isValidId(circleId) &&
+                         isValidId(memberUid) &&
+                         request.auth.uid == memberUid &&
+                         incoming().memberUid == request.auth.uid &&
+                         incoming().keys().hasAll([
+                           'memberUid', 'displayName', 'currentChapter',
+                           'totalChapters', 'progressPercent', 'statusNote',
+                           'createdAt', 'updatedAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'memberUid', 'displayName', 'currentChapter',
+                           'totalChapters', 'progressPercent', 'statusNote',
+                           'createdAt', 'updatedAt'
+                         ]) &&
+                         isValidCircleMember(incoming()) &&
+                         exists(/databases/$(database)/documents/reading_circles/$(circleId)) &&
+                         request.auth.uid in get(/databases/$(database)/documents/reading_circles/$(circleId)).data.memberUids;
+
+        allow update: if isSignedIn() &&
+                         isValidId(circleId) &&
+                         isValidId(memberUid) &&
+                         request.auth.uid == memberUid &&
+                         isValidCircleMember(incoming()) &&
+                         incoming().memberUid == existing().memberUid &&
+                         incoming().totalChapters == existing().totalChapters &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'displayName', 'currentChapter', 'progressPercent', 'statusNote', 'updatedAt'
+                         ]) &&
+                         exists(/databases/$(database)/documents/reading_circles/$(circleId)) &&
+                         request.auth.uid in get(/databases/$(database)/documents/reading_circles/$(circleId)).data.memberUids;
+
+        allow delete: if isSignedIn() &&
+                         isValidId(circleId) &&
+                         isValidId(memberUid) &&
+                         (
+                           request.auth.uid == memberUid ||
+                           get(/databases/$(database)/documents/reading_circles/$(circleId)).data.creatorId == request.auth.uid
+                         );
+      }
+    }
+  }
+}
