@@ -83,6 +83,7 @@ data class CircleComment(
     val authorName: String = "",
     val chapterIndex: Long = 0L,
     val body: String = "",
+    val quoteText: String = "",
     val parentCommentId: String = "",
     val parentAuthorName: String = "",
     @ServerTimestamp val createdAt: Timestamp? = null,

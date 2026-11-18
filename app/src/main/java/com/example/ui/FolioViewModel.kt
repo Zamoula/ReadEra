@@ -586,6 +586,7 @@ class FolioViewModel(
         book: BookDefinition,
         chapterIndex: Int,
         body: String,
+        quoteText: String = "",
         parentComment: CircleComment? = null,
         preferredCircleId: String? = null
     ) {
@@ -622,6 +623,7 @@ class FolioViewModel(
                 displayName = displayName,
                 chapterIndex = chapterIndex,
                 body = trimmed,
+                quoteText = quoteText.trim(),
                 parentCommentId = parentComment?.id.orEmpty(),
                 parentAuthorName = parentComment?.authorName.orEmpty()
             )
@@ -667,10 +669,10 @@ class FolioViewModel(
         commentTracker.markNotified(circle.id, latestMs)
 
         val isReply = latest.parentCommentId.isNotBlank()
-        _statusBanner.value = if (isReply) {
-            "${latest.authorName} replied on \"${circle.bookTitle}\": ${latest.body.take(48)}"
-        } else {
-            "${latest.authorName} commented on \"${circle.bookTitle}\": ${latest.body.take(48)}"
+        _statusBanner.value = when {
+            isReply -> "${latest.authorName} replied on \"${circle.bookTitle}\": ${latest.body.take(48)}"
+            latest.quoteText.isNotBlank() -> "${latest.authorName} highlighted \"${latest.quoteText.take(36)}\": ${latest.body.take(42)}"
+            else -> "${latest.authorName} commented on \"${circle.bookTitle}\": ${latest.body.take(48)}"
         }
 
         BookCommentNotifier.notifyNewComment(
@@ -679,7 +681,8 @@ class FolioViewModel(
             bookTitle = circle.bookTitle,
             authorName = latest.authorName,
             commentBody = latest.body,
-            isReply = isReply
+            isReply = isReply,
+            quoteText = latest.quoteText
         )
     }
 

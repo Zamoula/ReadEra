@@ -290,6 +290,10 @@
           "type": "string",
           "description": "Comment or reply text (1 to 500 characters)."
         },
+        "quoteText": {
+          "type": "string",
+          "description": "Selected sentence or excerpt being commented on (empty for general comments, max 500 characters)."
+        },
         "parentCommentId": {
           "type": "string",
           "description": "Empty for top-level comments, or parent comment ID when replying to a comment."
@@ -316,6 +320,7 @@
         "authorName",
         "chapterIndex",
         "body",
+        "quoteText",
         "parentCommentId",
         "parentAuthorName",
         "createdAt",

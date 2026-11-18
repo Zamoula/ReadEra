@@ -73,7 +73,7 @@ fun CirclesScreen(
     onShareBook: (BookDefinition) -> Unit,
     onJoinBookLink: (String) -> Unit,
     onUpdateNote: (ReadingCircle, String) -> Unit,
-    onPostComment: (BookDefinition, Int, String, CircleComment?, String?) -> Unit,
+    onPostComment: (BookDefinition, Int, String, String, CircleComment?, String?) -> Unit,
     onDeleteComment: (circleId: String, commentId: String) -> Unit,
     onMarkCommentsRead: (circleId: String) -> Unit,
     onLeaveCircle: (String) -> Unit,
@@ -100,9 +100,9 @@ fun CirclesScreen(
             currentUserId = currentUserId,
             currentChapterIndex = myCh,
             onDismiss = { activeCommentsCircleId = null },
-            onPostComment = { body, parent ->
+            onPostComment = { body, quoteText, parent ->
                 activeCommentsItem.book?.let { book ->
-                    onPostComment(book, myCh, body, parent, activeCommentsItem.circle.id)
+                    onPostComment(book, myCh, body, quoteText, parent, activeCommentsItem.circle.id)
                 }
             },
             onDeleteComment = onDeleteComment,

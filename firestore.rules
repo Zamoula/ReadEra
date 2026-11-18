@@ -85,6 +85,7 @@ service cloud.firestore {
              data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 80 &&
              data.chapterIndex is int && data.chapterIndex >= 0 && data.chapterIndex <= 10000 &&
              data.body is string && data.body.size() >= 1 && data.body.size() <= 500 &&
+             data.quoteText is string && data.quoteText.size() <= 500 &&
              data.parentCommentId is string && data.parentCommentId.size() <= 128 &&
              data.parentAuthorName is string && data.parentAuthorName.size() <= 80 &&
              data.createdAt is timestamp && data.createdAt <= request.time &&
@@ -279,12 +280,12 @@ service cloud.firestore {
                          incoming().authorUid == request.auth.uid &&
                          incoming().keys().hasAll([
                            'circleId', 'bookId', 'authorUid', 'authorName',
-                           'chapterIndex', 'body', 'parentCommentId',
+                           'chapterIndex', 'body', 'quoteText', 'parentCommentId',
                            'parentAuthorName', 'createdAt', 'updatedAt'
                          ]) &&
                          incoming().keys().hasOnly([
                            'circleId', 'bookId', 'authorUid', 'authorName',
-                           'chapterIndex', 'body', 'parentCommentId',
+                           'chapterIndex', 'body', 'quoteText', 'parentCommentId',
                            'parentAuthorName', 'createdAt', 'updatedAt'
                          ]) &&
                          isValidCircleComment(incoming()) &&

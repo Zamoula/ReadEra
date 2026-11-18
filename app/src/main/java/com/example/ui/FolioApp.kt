@@ -422,11 +422,12 @@ private fun AuthenticatedFolioShell(
                         onAdjustFontSize = { delta -> viewModel.adjustFontSize(delta) },
                         onSetLineSpacing = { lvl -> viewModel.setLineSpacing(lvl) },
                         onSetUseSerif = { serif -> viewModel.setUseSerifFont(serif) },
-                        onPostComment = { chapterIdx, body, parent ->
+                        onPostComment = { chapterIdx, body, quoteText, parent ->
                             viewModel.postBookComment(
                                 book = readerBookItem.book,
                                 chapterIndex = chapterIdx,
                                 body = body,
+                                quoteText = quoteText,
                                 parentComment = parent,
                                 preferredCircleId = activeCircle?.circle?.id
                             )
@@ -600,8 +601,8 @@ private fun AuthenticatedFolioShell(
                                         onUpdateNote = { circle, note ->
                                             viewModel.updateCircleNote(circle, note)
                                         },
-                                        onPostComment = { book, chapterIdx, body, parent, circleId ->
-                                            viewModel.postBookComment(book, chapterIdx, body, parent, circleId)
+                                        onPostComment = { book, chapterIdx, body, quoteText, parent, circleId ->
+                                            viewModel.postBookComment(book, chapterIdx, body, quoteText, parent, circleId)
                                         },
                                         onDeleteComment = { circleId, commentId ->
                                             viewModel.deleteBookComment(circleId, commentId)

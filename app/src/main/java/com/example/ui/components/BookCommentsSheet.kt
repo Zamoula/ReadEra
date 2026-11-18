@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -24,6 +26,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
@@ -38,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,14 +49,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.model.CircleComment
 import com.example.ui.CircleWithMembers
 import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -62,12 +67,16 @@ fun BookCommentsBottomSheet(
     circleWithMembers: CircleWithMembers?,
     currentUserId: String,
     currentChapterIndex: Int,
+    pendingQuote: String? = null,
+    focusedCommentId: String? = null,
+    onClearPendingQuote: () -> Unit = {},
     onDismiss: () -> Unit,
-    onPostComment: (body: String, parentComment: CircleComment?) -> Unit,
+    onPostComment: (body: String, quoteText: String, parentComment: CircleComment?) -> Unit,
     onDeleteComment: (circleId: String, commentId: String) -> Unit,
     onShareBookLink: (() -> Unit)? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val listState = rememberLazyListState()
     var commentDraft by remember { mutableStateOf("") }
     var replyTarget by remember { mutableStateOf<CircleComment?>(null) }
 
@@ -81,6 +90,15 @@ fun BookCommentsBottomSheet(
     val repliesByParent = remember(comments) {
         comments.filter { it.parentCommentId.isNotBlank() }
             .groupBy { it.parentCommentId }
+    }
+
+    LaunchedEffect(focusedCommentId, topLevelComments) {
+        if (!focusedCommentId.isNullOrBlank()) {
+            val idx = topLevelComments.indexOfFirst { it.id == focusedCommentId }
+            if (idx >= 0) {
+                listState.animateScrollToItem(idx)
+            }
+        }
     }
 
     ModalBottomSheet(
@@ -164,6 +182,7 @@ fun BookCommentsBottomSheet(
                 }
             } else {
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 140.dp, max = 380.dp),
@@ -177,6 +196,7 @@ fun BookCommentsBottomSheet(
                                 isMe = comment.authorUid == currentUserId,
                                 canDelete = comment.authorUid == currentUserId || circleCreatorId == currentUserId,
                                 isReply = false,
+                                isFocused = comment.id == focusedCommentId,
                                 onReply = { replyTarget = comment },
                                 onDelete = {
                                     circleWithMembers?.circle?.id?.let { cid ->
@@ -204,6 +224,7 @@ fun BookCommentsBottomSheet(
                                         isMe = reply.authorUid == currentUserId,
                                         canDelete = reply.authorUid == currentUserId || circleCreatorId == currentUserId,
                                         isReply = true,
+                                        isFocused = false,
                                         onReply = {
                                             // Keep replies grouped under the parent thread while addressing the reply author
                                             replyTarget = comment.copy(authorName = reply.authorName)
@@ -217,6 +238,60 @@ fun BookCommentsBottomSheet(
                                     )
                                 }
                             }
+                        }
+                    }
+                }
+            }
+
+            val activeQuote = if (replyTarget == null) pendingQuote?.trim().orEmpty() else ""
+            if (activeQuote.isNotEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFFFFE042).copy(alpha = 0.25f),
+                    border = BorderStroke(1.dp, Color(0xFFFFD400)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("pending_quote_banner")
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FormatQuote,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Selected passage (will highlight in book)",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "\"$activeQuote\"",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontStyle = FontStyle.Italic,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        IconButton(
+                            onClick = onClearPendingQuote,
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Clear selected passage",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
                         }
                     }
                 }
@@ -266,10 +341,10 @@ fun BookCommentsBottomSheet(
                     onValueChange = { if (it.length <= 500) commentDraft = it },
                     placeholder = {
                         Text(
-                            if (replyTarget != null) {
-                                "Reply to ${replyTarget!!.authorName}…"
-                            } else {
-                                "Comment on Chapter ${currentChapterIndex + 1}…"
+                            when {
+                                replyTarget != null -> "Reply to ${replyTarget!!.authorName}…"
+                                activeQuote.isNotEmpty() -> "Add your comment on this sentence…"
+                                else -> "Comment on Chapter ${currentChapterIndex + 1}…"
                             }
                         )
                     },
@@ -283,9 +358,12 @@ fun BookCommentsBottomSheet(
                     onClick = {
                         val text = commentDraft.trim()
                         if (text.isNotEmpty()) {
-                            onPostComment(text, replyTarget)
+                            onPostComment(text, activeQuote, replyTarget)
                             commentDraft = ""
                             replyTarget = null
+                            if (activeQuote.isNotEmpty()) {
+                                onClearPendingQuote()
+                            }
                         }
                     },
                     enabled = commentDraft.isNotBlank(),
@@ -311,6 +389,7 @@ private fun CommentItemCard(
     isMe: Boolean,
     canDelete: Boolean,
     isReply: Boolean,
+    isFocused: Boolean,
     onReply: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
@@ -331,6 +410,7 @@ private fun CommentItemCard(
         } else {
             MaterialTheme.colorScheme.surfaceContainer
         },
+        border = if (isFocused) BorderStroke(1.5.dp, Color(0xFFFFD400)) else null,
         modifier = modifier.fillMaxWidth()
     ) {
         Column(
@@ -393,6 +473,36 @@ private fun CommentItemCard(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary
                 )
+            }
+
+            if (comment.quoteText.isNotBlank()) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFFFFE042).copy(alpha = 0.24f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(3.dp)
+                                .height(22.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(Color(0xFFFFD400))
+                        )
+                        Text(
+                            text = "\"${comment.quoteText}\"",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontStyle = FontStyle.Italic,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             }
 
             Text(

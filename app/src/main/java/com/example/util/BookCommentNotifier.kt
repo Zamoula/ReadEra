@@ -54,7 +54,8 @@ object BookCommentNotifier {
         bookTitle: String,
         authorName: String,
         commentBody: String,
-        isReply: Boolean
+        isReply: Boolean,
+        quoteText: String = ""
     ) {
         if (!hasNotificationPermission(context)) return
         ensureChannel(context)
@@ -77,15 +78,23 @@ object BookCommentNotifier {
 
         val title = if (isReply) {
             "$authorName replied in $bookTitle"
+        } else if (quoteText.isNotBlank()) {
+            "$authorName highlighted a passage in $bookTitle"
         } else {
             "$authorName commented on $bookTitle"
+        }
+
+        val expandedBody = if (quoteText.isNotBlank()) {
+            "\"${quoteText.take(120)}\"\n$commentBody"
+        } else {
+            commentBody
         }
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(commentBody)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(commentBody))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(expandedBody))
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)

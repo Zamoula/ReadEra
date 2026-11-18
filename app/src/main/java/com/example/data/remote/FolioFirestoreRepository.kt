@@ -621,6 +621,7 @@ class FolioFirestoreRepository(
         displayName: String,
         chapterIndex: Int,
         body: String,
+        quoteText: String = "",
         parentCommentId: String = "",
         parentAuthorName: String = ""
     ): Result<Unit> {
@@ -628,6 +629,7 @@ class FolioFirestoreRepository(
         if (trimmed.isEmpty()) {
             return Result.failure(IllegalArgumentException("Comment cannot be empty."))
         }
+        val cleanQuote = quoteText.trim().take(500)
         val commentId = "cmt_${UUID.randomUUID().toString().replace("-", "").take(12)}"
         val path = "reading_circles/$circleId/comments/$commentId"
         return try {
@@ -645,6 +647,7 @@ class FolioFirestoreRepository(
                 "authorName" to safeDisplayName(displayName),
                 "chapterIndex" to chapterIndex.coerceIn(0, 10000).toLong(),
                 "body" to trimmed,
+                "quoteText" to cleanQuote,
                 "parentCommentId" to parentCommentId.take(128),
                 "parentAuthorName" to parentAuthorName.take(80),
                 "createdAt" to FieldValue.serverTimestamp(),

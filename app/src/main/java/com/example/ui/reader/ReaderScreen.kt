@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -32,6 +33,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -42,7 +44,9 @@ import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.OfflinePin
 import androidx.compose.material.icons.filled.PictureAsPdf
@@ -67,6 +71,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -79,6 +84,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
@@ -86,12 +92,24 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalTextToolbar
+import androidx.compose.ui.platform.TextToolbar
+import androidx.compose.ui.platform.TextToolbarStatus
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import com.example.data.local.OfflineBookRepository
 import com.example.data.local.ReaderPreferences
 import com.example.data.model.BookChapter
@@ -140,7 +158,7 @@ fun ReaderScreen(
     onAdjustFontSize: (Int) -> Unit,
     onSetLineSpacing: (Int) -> Unit,
     onSetUseSerif: (Boolean) -> Unit,
-    onPostComment: (chapterIndex: Int, body: String, parentComment: CircleComment?) -> Unit,
+    onPostComment: (chapterIndex: Int, body: String, quoteText: String, parentComment: CircleComment?) -> Unit,
     onDeleteComment: (circleId: String, commentId: String) -> Unit,
     onMarkCommentsRead: (circleId: String) -> Unit,
     onBack: () -> Unit
@@ -150,6 +168,8 @@ fun ReaderScreen(
     val book = bookItem.book
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
+    val clipboardManager = LocalClipboardManager.current
+    val density = LocalDensity.current
     val maxUnits = (book.totalChapters - 1).coerceAtLeast(0)
 
     var currentChapterIndex by remember(book.id, initialChapterIndex) {
@@ -159,7 +179,35 @@ fun ReaderScreen(
     var showAppearanceSheet by remember { mutableStateOf(false) }
     var showChaptersSheet by remember { mutableStateOf(false) }
     var showCommentsSheet by remember { mutableStateOf(false) }
+    var pendingQuoteForComment by remember { mutableStateOf<String?>(null) }
+    var focusedCommentId by remember { mutableStateOf<String?>(null) }
+    var selectionMenu by remember { mutableStateOf<SelectionMenuState?>(null) }
     var offlineChapters by remember(book.id) { mutableStateOf<List<BookChapter>?>(null) }
+
+    val readerTextToolbar = remember {
+        object : TextToolbar {
+            override val status: TextToolbarStatus
+                get() = if (selectionMenu != null) TextToolbarStatus.Shown else TextToolbarStatus.Hidden
+
+            override fun showMenu(
+                rect: Rect,
+                onCopyRequested: (() -> Unit)?,
+                onPasteRequested: (() -> Unit)?,
+                onCutRequested: (() -> Unit)?,
+                onSelectAllRequested: (() -> Unit)?
+            ) {
+                selectionMenu = SelectionMenuState(
+                    rect = rect,
+                    onCopyRequested = onCopyRequested,
+                    onSelectAllRequested = onSelectAllRequested
+                )
+            }
+
+            override fun hide() {
+                selectionMenu = null
+            }
+        }
+    }
 
     LaunchedEffect(showCommentsSheet, circleWithMembers?.comments?.size) {
         if (showCommentsSheet) {
@@ -198,6 +246,9 @@ fun ReaderScreen(
 
     // Scroll to top and sync page/chapter index when changing pages/chapters
     LaunchedEffect(currentChapterIndex) {
+        selectionMenu = null
+        pendingQuoteForComment = null
+        focusedCommentId = null
         scrollState.scrollTo(0)
         onSaveChapterProgress(currentChapterIndex, 0, false)
     }
@@ -288,7 +339,15 @@ fun ReaderScreen(
                 }
             }
         } else {
-            // Scrollable Editorial Prose Body
+            // Scrollable Editorial Prose Body with Long-Press Text Selection & Sentence Highlighting
+            val chapterQuotedComments = remember(circleWithMembers?.comments, currentChapterIndex) {
+                circleWithMembers?.comments
+                    ?.filter { it.chapterIndex.toInt() == currentChapterIndex && it.quoteText.isNotBlank() }
+                    .orEmpty()
+            }
+            val isDarkReader = preferences.readerTheme == ReaderThemeMode.NIGHT || preferences.readerTheme == ReaderThemeMode.OLED
+            val highlightBg = if (isDarkReader) Color(0xFFFFD400).copy(alpha = 0.30f) else Color(0xFFFFE042).copy(alpha = 0.55f)
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -331,20 +390,58 @@ fun ReaderScreen(
                         color = inkColor
                     )
 
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FormatQuote,
+                            contentDescription = null,
+                            tint = mutedColor,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = "Long-press any sentence to select & comment",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = mutedColor
+                        )
+                    }
+
                     HorizontalDivider(
                         color = mutedColor.copy(alpha = 0.25f),
                         modifier = Modifier.padding(vertical = 4.dp)
                     )
 
-                    chapter.paragraphs.forEachIndexed { idx, paragraph ->
-                        Text(
-                            text = paragraph,
-                            fontFamily = bodyFamily,
-                            fontSize = bodySizeSp,
-                            lineHeight = bodyLineHeightSp,
-                            color = inkColor,
-                            modifier = Modifier.padding(top = if (idx == 0) 2.dp else 4.dp)
-                        )
+                    CompositionLocalProvider(LocalTextToolbar provides readerTextToolbar) {
+                        SelectionContainer {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(18.dp)
+                            ) {
+                                chapter.paragraphs.forEachIndexed { idx, paragraph ->
+                                    val annotatedParagraph = remember(paragraph, chapterQuotedComments, highlightBg) {
+                                        buildHighlightedParagraph(
+                                            paragraph = paragraph,
+                                            quotedComments = chapterQuotedComments,
+                                            highlightBg = highlightBg,
+                                            onQuoteTap = { tappedComment ->
+                                                focusedCommentId = tappedComment.id
+                                                pendingQuoteForComment = null
+                                                showCommentsSheet = true
+                                            }
+                                        )
+                                    }
+                                    Text(
+                                        text = annotatedParagraph,
+                                        fontFamily = bodyFamily,
+                                        fontSize = bodySizeSp,
+                                        lineHeight = bodyLineHeightSp,
+                                        color = inkColor,
+                                        modifier = Modifier.padding(top = if (idx == 0) 2.dp else 4.dp)
+                                    )
+                                }
+                            }
+                        }
                     }
 
                     Spacer(Modifier.height(16.dp))
@@ -936,21 +1033,163 @@ fun ReaderScreen(
             }
         }
 
+        val activeSelection = selectionMenu
+        if (activeSelection != null && !book.isPdfUpload) {
+            val toolbarGapPx = with(density) { 12.dp.roundToPx() }
+            val toolbarApproxHeightPx = with(density) { 52.dp.roundToPx() }
+            val minTopPx = with(density) { 76.dp.roundToPx() }
+            val yOffsetPx = if (activeSelection.rect.top - toolbarApproxHeightPx - toolbarGapPx >= minTopPx) {
+                (activeSelection.rect.top - toolbarApproxHeightPx - toolbarGapPx).roundToInt()
+            } else {
+                (activeSelection.rect.bottom + toolbarGapPx).roundToInt()
+            }
+
+            Popup(
+                alignment = Alignment.TopCenter,
+                offset = IntOffset(0, yOffsetPx),
+                properties = PopupProperties(focusable = false)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = Color(0xFF111318),
+                    contentColor = Color.White,
+                    shadowElevation = 10.dp,
+                    border = BorderStroke(1.dp, Color(0xFFFFD400).copy(alpha = 0.6f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                activeSelection.onCopyRequested?.invoke()
+                                val picked = clipboardManager.getText()?.text?.trim().orEmpty()
+                                readerTextToolbar.hide()
+                                if (picked.isNotEmpty()) {
+                                    pendingQuoteForComment = picked.take(500)
+                                    focusedCommentId = null
+                                    showCommentsSheet = true
+                                }
+                            },
+                            shape = RoundedCornerShape(50),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFFFFD400),
+                                contentColor = Color(0xFF111318)
+                            ),
+                            modifier = Modifier.testTag("selection_comment_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ChatBubbleOutline,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "Comment",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        TextButton(
+                            onClick = {
+                                activeSelection.onCopyRequested?.invoke()
+                                readerTextToolbar.hide()
+                            },
+                            colors = ButtonDefaults.textButtonColors(contentColor = Color.White),
+                            modifier = Modifier.testTag("selection_copy_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text("Copy", style = MaterialTheme.typography.labelMedium)
+                        }
+
+                        if (activeSelection.onSelectAllRequested != null) {
+                            TextButton(
+                                onClick = {
+                                    activeSelection.onSelectAllRequested.invoke()
+                                },
+                                colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFF93C5FD)),
+                                modifier = Modifier.testTag("selection_select_all_button")
+                            ) {
+                                Text("Select All", style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         if (showCommentsSheet) {
             BookCommentsBottomSheet(
                 bookTitle = book.title,
                 circleWithMembers = circleWithMembers,
                 currentUserId = currentUserId,
                 currentChapterIndex = currentChapterIndex,
-                onDismiss = { showCommentsSheet = false },
-                onPostComment = { body, parent ->
-                    onPostComment(currentChapterIndex, body, parent)
+                pendingQuote = pendingQuoteForComment,
+                focusedCommentId = focusedCommentId,
+                onClearPendingQuote = { pendingQuoteForComment = null },
+                onDismiss = {
+                    showCommentsSheet = false
+                    pendingQuoteForComment = null
+                    focusedCommentId = null
+                },
+                onPostComment = { body, quoteText, parent ->
+                    onPostComment(currentChapterIndex, body, quoteText, parent)
                 },
                 onDeleteComment = onDeleteComment,
                 onShareBookLink = if (!book.isPdfUpload) {
                     { onShareBook(book) }
                 } else null
             )
+        }
+    }
+}
+
+private data class SelectionMenuState(
+    val rect: Rect,
+    val onCopyRequested: (() -> Unit)?,
+    val onSelectAllRequested: (() -> Unit)?
+)
+
+private fun buildHighlightedParagraph(
+    paragraph: String,
+    quotedComments: List<CircleComment>,
+    highlightBg: Color,
+    onQuoteTap: (CircleComment) -> Unit
+): AnnotatedString = buildAnnotatedString {
+    append(paragraph)
+    quotedComments.forEach { comment ->
+        val segments = comment.quoteText
+            .split('\n')
+            .map { it.trim() }
+            .filter { it.length >= 2 }
+        segments.forEach { segment ->
+            val matchIdx = paragraph.indexOf(segment)
+            if (matchIdx >= 0) {
+                val endIdx = (matchIdx + segment.length).coerceAtMost(paragraph.length)
+                addStyle(
+                    style = SpanStyle(
+                        background = highlightBg,
+                        textDecoration = TextDecoration.Underline
+                    ),
+                    start = matchIdx,
+                    end = endIdx
+                )
+                addLink(
+                    clickable = LinkAnnotation.Clickable(
+                        tag = "quote_${comment.id}",
+                        linkInteractionListener = { onQuoteTap(comment) }
+                    ),
+                    start = matchIdx,
+                    end = endIdx
+                )
+            }
         }
     }
 }

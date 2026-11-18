@@ -342,7 +342,7 @@ test("Shared book comments and threaded replies among circle link members", asyn
     })
   );
 
-  // Alice posts a top-level comment while reading
+  // Alice posts a top-level comment on a selected sentence while reading
   await assertSucceeds(
     aliceDb.collection("reading_circles").doc(circleId).collection("comments").doc("cmt_1").set({
       circleId,
@@ -351,6 +351,7 @@ test("Shared book comments and threaded replies among circle link members", asyn
       authorName: "Alice",
       chapterIndex: 1,
       body: "The hospitality scene in Book I sets the whole tone.",
+      quoteText: "Sing in me, Muse, and through me tell the story of that man skilled in all ways of contending.",
       parentCommentId: "",
       parentAuthorName: "",
       createdAt: pastDate(6000),
@@ -370,6 +371,7 @@ test("Shared book comments and threaded replies among circle link members", asyn
       authorName: "Charlie",
       chapterIndex: 0,
       body: "Intruder comment",
+      quoteText: "",
       parentCommentId: "",
       parentAuthorName: "",
       createdAt: pastDate(4000),
@@ -397,10 +399,28 @@ test("Shared book comments and threaded replies among circle link members", asyn
       authorName: "Bob",
       chapterIndex: 1,
       body: "Completely agree — Athena's arrival is iconic!",
+      quoteText: "",
       parentCommentId: "cmt_1",
       parentAuthorName: "Alice",
       createdAt: pastDate(3000),
       updatedAt: pastDate(3000),
+    })
+  );
+
+  // Oversized quoteText (>500 chars) fails validation
+  await assertFails(
+    bobDb.collection("reading_circles").doc(circleId).collection("comments").doc("cmt_long_quote").set({
+      circleId,
+      bookId: "odyssey",
+      authorUid: BOB_UID,
+      authorName: "Bob",
+      chapterIndex: 1,
+      body: "Too long quote",
+      quoteText: "q".repeat(501),
+      parentCommentId: "",
+      parentAuthorName: "",
+      createdAt: pastDate(2500),
+      updatedAt: pastDate(2500),
     })
   );
 
@@ -413,6 +433,7 @@ test("Shared book comments and threaded replies among circle link members", asyn
       authorName: "Alice",
       chapterIndex: 1,
       body: "Spoofed",
+      quoteText: "",
       parentCommentId: "",
       parentAuthorName: "",
       createdAt: pastDate(2000),
